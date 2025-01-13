@@ -1,0 +1,60 @@
+<h1>Syndicate on {{ self.treasure.spaced_relic }}</h1>
+%% if let Some(owner) = self.owner {
+  <div class=thumbnails>
+    {{Iframe::thumbnail(owner)}}
+  </div>
+%% }
+<dl>
+  <dt>id</dt>
+  <dd>{{ self.id }}</dd>
+  <dt>summoning block</dt>
+  <dd><a href=/block/{{ self.id.block }}>{{ self.id.block }}</a></dd>
+  <dt>summoning transaction</dt>
+  <dd>{{ self.id.tx }}</dd>
+  <dt>treasure</dt>
+  <dd><a href=/bone/{{ self.treasure.spaced_relic }}>{{ self.treasure.spaced_relic }}</a></dd>
+  <dt>quota</dt>
+  <dd>{{ self.pile(self.entry.quota) }}</dd>
+  <dt>royalty</dt>
+  <dd>{{ self.relic(self.entry.royalty) }}</dd>
+  <dt>reward</dt>
+%% if let Some(reward) = self.entry.reward {
+  <dd>{{ self.pile(reward) }}</dd>
+%% } else {
+  <dd>none</dd>
+%% }
+  <dt>cap</dt>
+  <dd>{{ self.entry.cap.unwrap_or(u32::MAX) }}</dd>
+  <dt>chests</dt>
+  <dd>{{ self.entry.chests }}</dd>
+  <dt>chestable</dt>
+  <dd>{{ self.chestable }}</dd>
+  <dt>start</dt>
+%% if let Some(start) = self.entry.height.0 {
+  <dd><a href=/block/{{ start }}>{{ start }}</a></dd>
+%% } else {
+  <dd>none</dd>
+%% }
+  <dt>end</dt>
+%% if let Some(end) = self.entry.height.1 {
+  <dd><a href=/block/{{ end }}>{{ end }}</a></dd>
+%% } else {
+  <dd>none</dd>
+%% }
+  <dt>lock</dt>
+%% if let Some(lock) = self.entry.lock {
+  <dd>{{ lock }}</dd>
+%% } else {
+  <dd>none</dd>
+%% }
+  <dt>gated</dt>
+  <dd>{{ self.entry.gated }}</dd>
+  <dt>turbo</dt>
+  <dd>{{ self.entry.turbo }}</dd>
+  <dt>summoning</dt>
+  <dd><a class=monospace href=/tx/{{ self.entry.summoning }}>{{ self.entry.summoning }}</a></dd>
+%% if let Some(owner) = self.owner {
+  <dt>owner</dt>
+  <dd><a class=monospace href=/inscription/{{ owner }}>{{ owner }}</a></dd>
+%% }
+</dl>

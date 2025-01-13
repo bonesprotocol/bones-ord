@@ -1,0 +1,18 @@
+<h1>Bones</h1>
+<ul>
+%% for (id, entry, inscription_id) in &self.entries {
+  <li><a href=/bone/{{ entry.spaced_relic }}>{{ entry.spaced_relic }}</a></li>
+%% }
+</ul>
+<div class=center>
+  %% if let Some(prev) = self.prev {
+  <a class=prev href=/bones/{{prev}}>prev</a>
+  %% } else {
+  prev
+  %% }
+  %% if let Some(next) = self.next {
+  <a class=next href=/bones/{{next}}>next</a>
+  %% } else {
+  next
+  %% }
+</div>
