@@ -40,6 +40,7 @@ pub(crate) mod relic;
 pub(crate) mod relic_events;
 pub(crate) mod relics;
 mod sat;
+pub(crate) mod sealing;
 pub(crate) mod sealings;
 pub(crate) mod syndicate;
 pub(crate) mod syndicates;

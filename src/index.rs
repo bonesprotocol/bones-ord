@@ -1032,6 +1032,44 @@ impl Index {
     Ok((entries, more))
   }
 
+  pub fn sealing(&self, relic: Relic) -> Result<(Option<api::Inscription>, Option<Txid>)> {
+    let rtx = self.database.begin_read()?;
+
+    let relic_to_sequence_number = rtx.open_table(RELIC_TO_SEQUENCE_NUMBER)?;
+    let sequence_number_to_inscription_entry =
+      rtx.open_table(SEQUENCE_NUMBER_TO_INSCRIPTION_ENTRY)?;
+    let relic_to_relic_id = rtx.open_table(RELIC_TO_RELIC_ID)?;
+    let relic_id_to_relic_entry = rtx.open_table(RELIC_ID_TO_RELIC_ENTRY)?;
+
+    if let Some(seq_number) = relic_to_sequence_number.get(&relic.store())? {
+      let seq_number = seq_number.value();
+      if let Some(inscription_entry_val) = sequence_number_to_inscription_entry.get(seq_number)? {
+        let inscription_entry = InscriptionEntry::load(inscription_entry_val.value());
+        let inscription_id = inscription_entry.id;
+
+        if let Some((mut api_inscription, _, _, _)) = self.inscription_info(
+          subcommand::server::query::Inscription::Id(inscription_id),
+          true,
+        )? {
+          let mut enshrining_txid = None;
+
+          if api_inscription.relic_enshrined {
+            if let Some(raw_id_val) = relic_to_relic_id.get(relic.store())? {
+              let relic_id = RelicId::load(raw_id_val.value());
+
+              if let Some(relic_entry_val) = relic_id_to_relic_entry.get(&relic_id.store())? {
+                let relic_entry = RelicEntry::load(relic_entry_val.value());
+                enshrining_txid = Some(relic_entry.enshrining);
+              }
+            }
+          }
+          return Ok((Some(api_inscription), enshrining_txid));
+        }
+      }
+    }
+    Ok((None, None))
+  }
+
   pub fn sealings_paginated(
     &self,
     page_size: usize,
@@ -1415,20 +1453,15 @@ impl Index {
     };
 
     let previous = if let Some(n) = sequence_number.checked_sub(1) {
-      // todo: offset to bonestones inscription height
-      if n == (147660645 - 1) {
-        None
-      } else {
-        Some(
-          InscriptionEntry::load(
-            sequence_number_to_inscription_entry
-              .get(n)?
-              .unwrap()
-              .value(),
-          )
-          .id,
+      Some(
+        InscriptionEntry::load(
+          sequence_number_to_inscription_entry
+            .get(n)?
+            .unwrap()
+            .value(),
         )
-      }
+        .id,
+      )
     } else {
       None
     };

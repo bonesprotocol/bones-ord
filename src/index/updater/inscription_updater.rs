@@ -101,11 +101,6 @@ impl<'a, 'tx, 'emitter> InscriptionUpdater<'a, 'tx, 'emitter> {
       .next()
       .transpose()?
       .unwrap_or(0);
-    if next_number == 0 {
-      // todo: this sets an offset to first bonestones height
-      next_number = 147660645;
-    }
-
     let next_sequence_number = sequence_number_to_inscription_entry
       .iter()?
       .next_back()
@@ -462,15 +457,18 @@ impl<'a, 'tx, 'emitter> InscriptionUpdater<'a, 'tx, 'emitter> {
             &InscriptionEntry { charms, ..entry }.store(),
           )?;
         }
-        self.event_emitter.emit(
-          txid,
-          EventInfo::InscriptionTransferred {
-            inscription_id,
-            new_location: new_satpoint,
-            old_location: old_satpoint,
-            sequence_number,
-          },
-        )?;
+        // emit events only for valid bonestones
+        if let Some(_height) = self.sequence_number_to_bonestone_block_height.get(&sequence_number)? {
+          self.event_emitter.emit(
+            txid,
+            EventInfo::InscriptionTransferred {
+              inscription_id,
+              new_location: new_satpoint,
+              old_location: old_satpoint,
+              sequence_number,
+            },
+          )?;
+        }
         self
           .satpoint_to_sequence_number
           .remove_all(&old_satpoint.store())?;

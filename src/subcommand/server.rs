@@ -11,13 +11,13 @@ use {
     relics::{RelicId, SpacedRelic},
     subcommand::server::accept_json::AcceptJson,
     templates::{
-      relic::RelicHtml, relic_events::RelicEventsHtml, relics::RelicsHtml, sealings::SealingsHtml,
-      syndicate::SyndicateHtml, syndicates::SyndicatesHtml, AddressOutputJson, BlockHtml,
-      BlockJson, HomeHtml, InputHtml, InscriptionByAddressJson, InscriptionDecoded,
-      InscriptionDecodedHtml, InscriptionHtml, InscriptionJson, InscriptionsHtml, OutputHtml,
-      OutputJson, PageContent, PageHtml, PreviewAudioHtml, PreviewImageHtml, PreviewModelHtml,
-      PreviewPdfHtml, PreviewTextHtml, PreviewUnknownHtml, PreviewVideoHtml, RangeHtml, RareTxt,
-      SatHtml, ShibescriptionJson, TransactionHtml, Utxo,
+      relic::RelicHtml, relic_events::RelicEventsHtml, relics::RelicsHtml, sealing::SealingHtml,
+      sealings::SealingsHtml, syndicate::SyndicateHtml, syndicates::SyndicatesHtml,
+      AddressOutputJson, BlockHtml, BlockJson, HomeHtml, InputHtml, InscriptionByAddressJson,
+      InscriptionDecoded, InscriptionDecodedHtml, InscriptionHtml, InscriptionJson,
+      InscriptionsHtml, OutputHtml, OutputJson, PageContent, PageHtml, PreviewAudioHtml,
+      PreviewImageHtml, PreviewModelHtml, PreviewPdfHtml, PreviewTextHtml, PreviewUnknownHtml,
+      PreviewVideoHtml, RangeHtml, RareTxt, SatHtml, ShibescriptionJson, TransactionHtml, Utxo,
     },
   },
   axum::{
@@ -330,6 +330,7 @@ impl Server {
         .route("/bones/:page", get(Self::relics_paginated))
         .route("/bones/balances", get(Self::relics_balances))
         .route("/bones/claimable", get(Self::relics_claimable))
+        .route("/tick/:tick", get(Self::sealing_info))
         .route("/tickers/:page", get(Self::sealings_paginated))
         .route("/syndicate/:syndicate", get(Self::syndicate))
         .route("/syndicates", get(Self::syndicates))
@@ -1624,6 +1625,51 @@ impl Server {
           more,
           prev,
           next,
+        }
+        .page(server_config)
+        .into_response()
+      })
+    })
+  }
+
+  async fn sealing_info(
+    Extension(server_config): Extension<Arc<PageConfig>>,
+    Extension(index): Extension<Arc<Index>>,
+    Path(DeserializeFromStr(relic_query)): Path<DeserializeFromStr<query::Relic>>,
+    Query(query): Query<JsonQuery>,
+  ) -> ServerResult<Response> {
+    // Offload blocking DB operations
+    task::block_in_place(|| {
+      let relic = match relic_query {
+        query::Relic::Spaced(spaced_relic) => spaced_relic.relic,
+        query::Relic::Id(relic_id) => index
+          .get_relic_by_id(relic_id)?
+          .ok_or_not_found(|| format!("tick {relic_id}"))?,
+        query::Relic::Number(number) => index
+          .get_relic_by_number(usize::try_from(number).unwrap())?
+          .ok_or_not_found(|| format!("tick number {number}"))?,
+      };
+
+      let entry = index.sealing(relic)?;
+      let inscription = if let Some(inscription) = entry.0 {
+        inscription
+      } else {
+        return Err(ServerError::BadRequest(format!("tick {relic} not found")));
+      };
+      let enshrining_tx = entry.1;
+      // Decide on JSON or HTML
+      Ok(if query.json.unwrap_or(false) {
+        // Return raw JSON
+        Json(SealingHtml {
+          inscription,
+          enshrining_tx,
+        })
+        .into_response()
+      } else {
+        // Return HTML
+        SealingHtml {
+          inscription,
+          enshrining_tx,
         }
         .page(server_config)
         .into_response()
