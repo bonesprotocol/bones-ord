@@ -1,3 +1,4 @@
+use crate::templates::ShibescriptionJson;
 use {super::*, bincode::Options, redb::TypeName, std::cmp::Ordering};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -121,6 +122,13 @@ pub struct Event {
   pub event_index: u32,
   pub txid: Txid,
   pub info: EventInfo,
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct EventWithInscriptionInfo {
+  pub event: Event,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub inscription: Option<ShibescriptionJson>,
 }
 
 impl Event {

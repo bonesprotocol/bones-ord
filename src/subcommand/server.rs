@@ -1,3 +1,4 @@
+use crate::index::event::{EventInfo, EventWithInscriptionInfo};
 use {
   self::{
     deserialize_from_str::DeserializeFromStr,
@@ -134,6 +135,12 @@ struct OutputsQuery {
 #[derive(Deserialize)]
 struct JsonQuery {
   json: Option<bool>,
+}
+
+#[derive(Deserialize)]
+struct EventsQuery {
+  json: Option<bool>,
+  show_inscriptions: Option<bool>,
 }
 
 enum BlockQuery {
@@ -1418,7 +1425,8 @@ impl Server {
 
   async fn tx_events(
     Extension(index): Extension<Arc<Index>>,
-    Query(query): Query<JsonQuery>,
+    Extension(page_config): Extension<Arc<PageConfig>>,
+    Query(query): Query<EventsQuery>,
     Json(txids): Json<Vec<Txid>>,
   ) -> ServerResult<Response> {
     task::block_in_place(|| {
@@ -1427,7 +1435,101 @@ impl Server {
         for txid in txids {
           if let Ok(events) = index.events_for_tx(txid) {
             for event in events {
-              response.push(event);
+              if query.show_inscriptions.unwrap_or(false) {
+                let mut event_with_inscription = EventWithInscriptionInfo {
+                  event: event.clone(),
+                  inscription: None,
+                };
+                match event.info {
+                  EventInfo::InscriptionTransferred {
+                    inscription_id,
+                    new_location,
+                    ..
+                  } => {
+                    let Some(inscription_info) =
+                      index.inscription_info(query::Inscription::Id(inscription_id), false)?
+                    else {
+                      response.push(event_with_inscription);
+                      continue;
+                    };
+                    let mut inscription = inscription_info.2;
+                    let info = inscription_info.0;
+                    let entry = inscription_info.3;
+
+                    if let Some(delegate) = inscription.delegate() {
+                      let delegate_inscription = index
+                        .get_inscription_by_id(delegate)?
+                        .ok_or_not_found(|| format!("delegate {inscription_id}"))?;
+                      inscription.body = Some(Vec::new());
+                      inscription.content_type = delegate_inscription.content_type;
+                    }
+
+                    let output = index
+                      .get_transaction(new_location.outpoint.txid)?
+                      .ok_or_not_found(|| {
+                        format!("inscription {inscription_id} current transaction")
+                      })?
+                      .output
+                      .into_iter()
+                      .nth(new_location.outpoint.vout.try_into().unwrap())
+                      .ok_or_not_found(|| {
+                        format!("inscription {inscription_id} current transaction output")
+                      })?;
+                    let mut address: Option<String> = None;
+
+                    match page_config.chain.address_from_script(&output.script_pubkey) {
+                      Ok(add) => {
+                        address = Some(add.to_string());
+                      }
+                      Err(_error) => {
+                        // do nothing
+                      }
+                    }
+                    let charms =
+                      Charm::Vindicated.unset(info.charms.iter().fold(0, |mut acc, charm| {
+                        charm.set(&mut acc);
+                        acc
+                      }));
+                    let mut charm_icons = Vec::new();
+                    for charm in Charm::ALL {
+                      if charm.is_set(charms) {
+                        charm_icons.push(charm.icon().to_string());
+                      }
+                    }
+
+                    event_with_inscription.inscription = Some(ShibescriptionJson {
+                      chain: page_config.chain,
+                      genesis_fee: entry.fee,
+                      genesis_height: entry.height,
+                      inscription,
+                      inscription_id,
+                      next: info.next,
+                      inscription_number: entry.inscription_number,
+                      output,
+                      address,
+                      previous: info.previous,
+                      sat: entry.sat,
+                      satpoint: new_location,
+                      timestamp: timestamp(entry.timestamp.into()),
+                      relic_sealed: info.relic_sealed,
+                      relic_enshrined: info.relic_enshrined,
+                      syndicate: info.syndicate,
+                      charms: charm_icons,
+                      child_count: info.child_count,
+                      children: info.children,
+                    });
+                    response.push(event_with_inscription);
+                  }
+                  _ => {
+                    response.push(event_with_inscription);
+                  }
+                }
+              } else {
+                response.push(EventWithInscriptionInfo {
+                  event,
+                  inscription: None,
+                });
+              }
             }
           }
         }
