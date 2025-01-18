@@ -1437,8 +1437,11 @@ impl Server {
             for event in events {
               if query.show_inscriptions.unwrap_or(false) {
                 let mut event_with_inscription = EventWithInscriptionInfo {
-                  event: event.clone(),
+                  block_height: event.block_height,
+                  event_index: event.event_index,
+                  txid: event.txid,
                   inscription: None,
+                  info: event.info.clone(),
                 };
                 match event.info {
                   EventInfo::InscriptionTransferred {
@@ -1526,8 +1529,11 @@ impl Server {
                 }
               } else {
                 response.push(EventWithInscriptionInfo {
-                  event,
+                  block_height: event.block_height,
+                  event_index: event.event_index,
+                  txid: event.txid,
                   inscription: None,
+                  info: event.info,
                 });
               }
             }

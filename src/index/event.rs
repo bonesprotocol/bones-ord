@@ -126,7 +126,10 @@ pub struct Event {
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct EventWithInscriptionInfo {
-  pub event: Event,
+  pub block_height: u32,
+  pub event_index: u32,
+  pub txid: Txid,
+  pub info: EventInfo,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub inscription: Option<ShibescriptionJson>,
 }
