@@ -12,7 +12,7 @@ pub struct RelicsHtml {
 
 impl PageContent for RelicsHtml {
   fn title(&self) -> String {
-    "Relics".to_string()
+    "Bones".to_string()
   }
 }
 

@@ -7,9 +7,10 @@ use {
     sat_point::SatPoint,
   },
   ciborium::Value,
+  serde::{Deserialize, Serialize},
 };
 
-#[derive(Boilerplate, Default)]
+#[derive(Boilerplate, Default, Deserialize, Serialize)]
 pub(crate) struct InscriptionHtml {
   pub(crate) chain: Chain,
   pub(crate) genesis_fee: u64,
@@ -23,7 +24,9 @@ pub(crate) struct InscriptionHtml {
   pub(crate) sat: Option<Sat>,
   pub(crate) satpoint: SatPoint,
   pub(crate) timestamp: DateTime<Utc>,
+  #[serde(rename = "bone_claimed")]
   pub(crate) relic_sealed: Option<SpacedRelic>,
+  #[serde(rename = "bone_deployed")]
   pub(crate) relic_enshrined: bool,
   pub(crate) syndicate: Option<SyndicateId>,
   pub(crate) charms: u16,
@@ -40,14 +43,14 @@ pub(crate) struct InscriptionDecodedHtml {
   pub(crate) inscription_id: InscriptionId,
   pub(crate) inscription_number: u64,
   pub(crate) next: Option<InscriptionId>,
-  pub(crate) output: TxOut,
+  pub(crate) output: Option<TxOut>,
   pub(crate) previous: Option<InscriptionId>,
   pub(crate) sat: Option<Sat>,
   pub(crate) satpoint: SatPoint,
   pub(crate) timestamp: DateTime<Utc>,
-  #[serde(rename = "bone_sealed")]
+  #[serde(rename = "bone_claimed")]
   pub(crate) relic_sealed: Option<SpacedRelic>,
-  #[serde(rename = "bone_enshrined")]
+  #[serde(rename = "bone_deployed")]
   pub(crate) relic_enshrined: bool,
   pub(crate) syndicate: Option<SyndicateId>,
   pub(crate) charms: Vec<String>,
@@ -73,13 +76,15 @@ pub(crate) struct ShibescriptionJson {
   pub(crate) inscription_id: InscriptionId,
   pub(crate) inscription_number: u64,
   pub(crate) next: Option<InscriptionId>,
-  pub(crate) output: TxOut,
+  pub(crate) output: Option<TxOut>,
   pub(crate) address: Option<String>,
   pub(crate) previous: Option<InscriptionId>,
   pub(crate) sat: Option<Sat>,
   pub(crate) satpoint: SatPoint,
   pub(crate) timestamp: DateTime<Utc>,
+  #[serde(rename = "bone_claimed")]
   pub(crate) relic_sealed: Option<SpacedRelic>,
+  #[serde(rename = "bone_deployed")]
   pub(crate) relic_enshrined: bool,
   pub(crate) syndicate: Option<SyndicateId>,
   pub(crate) charms: Vec<String>,

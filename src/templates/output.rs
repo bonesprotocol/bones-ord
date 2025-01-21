@@ -40,6 +40,13 @@ pub struct OutputJson {
   pub value: u64,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct OutputCompactJson {
+  pub inscriptions: Vec<InscriptionDecodedHtml>,
+  #[serde(rename = "bones")]
+  pub relics: BTreeMap<SpacedRelic, Pile>,
+}
+
 impl OutputJson {
   pub fn new(
     chain: Chain,
@@ -63,6 +70,18 @@ impl OutputJson {
         .add(':'.to_string().as_str())
         .add(outpoint.vout.to_string().as_str()),
       value: output.value,
+    }
+  }
+}
+
+impl OutputCompactJson {
+  pub fn new(
+    inscriptions: Vec<InscriptionDecodedHtml>,
+    relics: BTreeMap<SpacedRelic, Pile>,
+  ) -> Self {
+    Self {
+      inscriptions,
+      relics,
     }
   }
 }

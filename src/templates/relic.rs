@@ -34,7 +34,7 @@ impl RelicEntryHtml {
     Pile {
       amount,
       divisibility: Enshrining::DIVISIBILITY,
-      symbol: Some('\u{211D}'),
+      symbol: Some('\u{1F9B4}'),
     }
   }
 }
@@ -74,7 +74,7 @@ pub struct RelicHtml {
 
 impl PageContent for RelicHtml {
   fn title(&self) -> String {
-    format!("Relic {}", self.entry.spaced_relic)
+    format!("Bone {}", self.entry.spaced_relic)
   }
 }
 

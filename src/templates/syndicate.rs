@@ -65,7 +65,7 @@ impl SyndicateHtml {
     Pile {
       amount,
       divisibility: Enshrining::DIVISIBILITY,
-      symbol: Some('\u{211D}'),
+      symbol: Some('\u{1F9B4}'),
     }
   }
 }

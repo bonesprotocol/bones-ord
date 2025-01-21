@@ -12,15 +12,17 @@
 <dl>
   <dt>number</dt>
   <dd>{{ self.entry.number }}</dd>
+  %% if self.entry.timestamp != 0 {
   <dt>timestamp</dt>
   <dd>
     <time>{{ timestamp(self.entry.timestamp) }}</time>
   </dd>
+  %% }
   <dt>id</dt>
   <dd>{{ self.id }}</dd>
-  <dt>enshrining block</dt>
+  <dt>deploy block</dt>
   <dd><a href=/block/{{ self.id.block }}>{{ self.id.block }}</a></dd>
-  <dt>enshrining transaction</dt>
+  <dt>deploy transaction</dt>
   <dd>{{ self.id.tx }}</dd>
   <dt>mint</dt>
   %% if let Some(terms) = self.entry.mint_terms {
@@ -74,7 +76,7 @@
   %% }
   <dt>turbo</dt>
   <dd>{{ self.entry.turbo }}</dd>
-  <dt>enshrining</dt>
+  <dt>deploy</dt>
   <dd><a class=monospace href=/tx/{{ self.entry.enshrining }}>{{ self.entry.enshrining }}</a></dd>
   %% if let Some(owner) = self.owner {
   <dt>owner</dt>

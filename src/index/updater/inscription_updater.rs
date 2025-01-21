@@ -458,7 +458,10 @@ impl<'a, 'tx, 'emitter> InscriptionUpdater<'a, 'tx, 'emitter> {
           )?;
         }
         // emit events only for valid bonestones
-        if let Some(_height) = self.sequence_number_to_bonestone_block_height.get(&sequence_number)? {
+        if let Some(_height) = self
+          .sequence_number_to_bonestone_block_height
+          .get(&sequence_number)?
+        {
           self.event_emitter.emit(
             txid,
             EventInfo::InscriptionTransferred {

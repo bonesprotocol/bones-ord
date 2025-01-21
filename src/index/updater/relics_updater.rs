@@ -488,7 +488,7 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
       return Ok(Err(RelicError::InvalidMetadata));
     };
     if spaced_relic == SpacedRelic::from_str(RELIC_NAME)? {
-      return Ok(Err(RelicError::SealingBaseToken))
+      return Ok(Err(RelicError::SealingBaseToken));
     }
     if let Some(_existing) = self.relic_to_sequence_number.get(spaced_relic.relic.n())? {
       // Ticker already sealed to an inscription
@@ -533,9 +533,9 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
     let mut spaced_relic = None;
     for entry in inscriptions {
       if let Some(relic) = self
-          .sequence_number_to_spaced_relic
-          .get(entry.sequence_number)?
-          .map(|spaced_relic_value| SpacedRelic::load(spaced_relic_value.value()))
+        .sequence_number_to_spaced_relic
+        .get(entry.sequence_number)?
+        .map(|spaced_relic_value| SpacedRelic::load(spaced_relic_value.value()))
       {
         spaced_relic = Some((relic, entry.sequence_number));
         break; // Stop as soon as a sealed relic was found

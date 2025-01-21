@@ -12,7 +12,7 @@ pub(crate) use {
   },
   inscriptions::InscriptionsHtml,
   metadata::MetadataHtml,
-  output::{AddressOutputJson, OutputHtml, OutputJson},
+  output::{AddressOutputJson, OutputCompactJson, OutputHtml, OutputJson},
   page_config::PageConfig,
   preview::{
     PreviewAudioHtml, PreviewImageHtml, PreviewModelHtml, PreviewPdfHtml, PreviewTextHtml,

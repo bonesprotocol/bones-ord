@@ -16,9 +16,10 @@ use {
       sealings::SealingsHtml, syndicate::SyndicateHtml, syndicates::SyndicatesHtml,
       AddressOutputJson, BlockHtml, BlockJson, HomeHtml, InputHtml, InscriptionByAddressJson,
       InscriptionDecoded, InscriptionDecodedHtml, InscriptionHtml, InscriptionJson,
-      InscriptionsHtml, OutputHtml, OutputJson, PageContent, PageHtml, PreviewAudioHtml,
-      PreviewImageHtml, PreviewModelHtml, PreviewPdfHtml, PreviewTextHtml, PreviewUnknownHtml,
-      PreviewVideoHtml, RangeHtml, RareTxt, SatHtml, ShibescriptionJson, TransactionHtml, Utxo,
+      InscriptionsHtml, OutputCompactJson, OutputHtml, OutputJson, PageContent, PageHtml,
+      PreviewAudioHtml, PreviewImageHtml, PreviewModelHtml, PreviewPdfHtml, PreviewTextHtml,
+      PreviewUnknownHtml, PreviewVideoHtml, RangeHtml, RareTxt, SatHtml, ShibescriptionJson,
+      TransactionHtml, Utxo,
     },
   },
   axum::{
@@ -864,35 +865,11 @@ impl Server {
       .collect::<Result<Vec<_>, _>>()?;
 
     let mut outputs = vec![];
+
     for outpoint in outpoints {
-      let list = index.list(outpoint)?;
-
-      let output = if outpoint == OutPoint::null() {
-        let mut value = 0;
-
-        if let Some(List::Unspent(ranges)) = &list {
-          for (start, end) in ranges {
-            value += u64::try_from(end - start).unwrap();
-          }
-        }
-
-        TxOut {
-          value,
-          script_pubkey: Script::new(),
-        }
-      } else {
-        index
-          .get_transaction(outpoint.txid)?
-          .ok_or_not_found(|| format!("output {outpoint}"))?
-          .output
-          .into_iter()
-          .nth(outpoint.vout as usize)
-          .ok_or_not_found(|| format!("output {outpoint}"))?
-      };
-
+      // Retrieve inscriptions for the outpoint
       let inscription_ids = index.get_inscriptions_on_output(outpoint)?;
-
-      let mut inscriptions: Vec<InscriptionDecodedHtml> = Vec::new();
+      let mut inscriptions = Vec::new();
 
       for id in inscription_ids {
         let Some(inscription_info) = index.inscription_info(query::Inscription::Id(id), false)?
@@ -901,33 +878,20 @@ impl Server {
             "inscription data not found".to_string(),
           ));
         };
+
         let inscription = inscription_info.2;
         let info = inscription_info.0;
         let entry = inscription_info.3;
-
-        let satpoint = index
-          .get_inscription_satpoint_by_id(id)?
-          .ok_or_not_found(|| format!("inscription {id}"))?;
 
         let body = if query.no_content.unwrap_or(false) {
           None
         } else {
           inscription.body.clone()
         };
-        let content_type = inscription.content_type().map(|s| s.to_string());
-        let delegate = inscription.delegate();
-        let parents = inscription.parents();
-        let metadata = inscription.metadata();
-        let charms = Charm::Vindicated.unset(info.charms.iter().fold(0, |mut acc, charm| {
-          charm.set(&mut acc);
-          acc
-        }));
-        let mut charm_icons = Vec::new();
-        for charm in Charm::ALL {
-          if charm.is_set(charms) {
-            charm_icons.push(charm.icon().to_string());
-          }
-        }
+
+        let satpoint = index
+          .get_inscription_satpoint_by_id(id)?
+          .ok_or_not_found(|| format!("inscription {id}"))?;
 
         let inscription_html = InscriptionDecodedHtml {
           chain: server_config.chain,
@@ -935,15 +899,15 @@ impl Server {
           genesis_height: entry.height,
           inscription: InscriptionDecoded {
             body,
-            content_type,
-            delegate,
-            metadata,
-            parents,
+            content_type: inscription.content_type().map(|s| s.to_string()),
+            delegate: inscription.delegate(),
+            metadata: inscription.metadata(),
+            parents: inscription.parents(),
           },
           inscription_id: entry.id,
           inscription_number: entry.inscription_number,
           next: info.next,
-          output: output.clone(),
+          output: None, // not returned here for perf reasons
           previous: info.previous,
           sat: entry.sat,
           satpoint,
@@ -951,22 +915,20 @@ impl Server {
           relic_sealed: info.relic_sealed,
           relic_enshrined: info.relic_enshrined,
           syndicate: info.syndicate,
-          charms: charm_icons,
+          charms: info.charms.iter().map(|c| c.icon().to_string()).collect(),
           child_count: info.child_count,
           children: info.children,
         };
+
         inscriptions.push(inscription_html);
       }
 
+      // Retrieve relic balances for the outpoint
       let relics = index.get_relic_balances_for_outpoint(outpoint)?;
 
-      outputs.push(OutputJson::new(
-        server_config.chain,
-        inscriptions,
-        outpoint,
-        output,
-        relics,
-      ))
+      // Create compact JSON structure
+      let output_compact = OutputCompactJson::new(inscriptions, relics);
+      outputs.push(output_compact);
     }
 
     let outputs_json = to_string(&outputs).context("Failed to serialize outputs")?;
@@ -1467,27 +1429,6 @@ impl Server {
                       inscription.content_type = delegate_inscription.content_type;
                     }
 
-                    let output = index
-                      .get_transaction(new_location.outpoint.txid)?
-                      .ok_or_not_found(|| {
-                        format!("inscription {inscription_id} current transaction")
-                      })?
-                      .output
-                      .into_iter()
-                      .nth(new_location.outpoint.vout.try_into().unwrap())
-                      .ok_or_not_found(|| {
-                        format!("inscription {inscription_id} current transaction output")
-                      })?;
-                    let mut address: Option<String> = None;
-
-                    match page_config.chain.address_from_script(&output.script_pubkey) {
-                      Ok(add) => {
-                        address = Some(add.to_string());
-                      }
-                      Err(_error) => {
-                        // do nothing
-                      }
-                    }
                     let charms =
                       Charm::Vindicated.unset(info.charms.iter().fold(0, |mut acc, charm| {
                         charm.set(&mut acc);
@@ -1508,8 +1449,8 @@ impl Server {
                       inscription_id,
                       next: info.next,
                       inscription_number: entry.inscription_number,
-                      output,
-                      address,
+                      output: None,
+                      address: None,
                       previous: info.previous,
                       sat: entry.sat,
                       satpoint: new_location,
@@ -2429,7 +2370,7 @@ impl Server {
           inscription_id,
           next: info.next,
           inscription_number: entry.inscription_number,
-          output,
+          output: Some(output),
           address,
           previous: info.previous,
           sat: entry.sat,
