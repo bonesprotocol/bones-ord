@@ -68,6 +68,15 @@ pub(crate) struct InscriptionDecoded {
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub(crate) struct RelicShibescriptionJson {
+  pub(crate) is_bonestone: bool,
+  #[serde(rename = "bone_claimed")]
+  pub(crate) relic_sealed: Option<SpacedRelic>,
+  #[serde(rename = "bone_deployed")]
+  pub(crate) relic_enshrined: bool,
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub(crate) struct ShibescriptionJson {
   pub(crate) chain: Chain,
   pub(crate) genesis_fee: u64,

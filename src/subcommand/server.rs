@@ -1,4 +1,5 @@
-use crate::index::event::{EventInfo, EventWithInscriptionInfo};
+use crate::index::event::{EventInfo, EventWithInscriptionInfo, EventWithRelicInscriptionInfo};
+use crate::templates::RelicShibescriptionJson;
 use {
   self::{
     deserialize_from_str::DeserializeFromStr,
@@ -1398,7 +1399,7 @@ impl Server {
           if let Ok(events) = index.events_for_tx(txid) {
             for event in events {
               if query.show_inscriptions.unwrap_or(false) {
-                let mut event_with_inscription = EventWithInscriptionInfo {
+                let mut event_with_inscription = EventWithRelicInscriptionInfo {
                   block_height: event.block_height,
                   event_index: event.event_index,
                   txid: event.txid,
@@ -1412,55 +1413,16 @@ impl Server {
                     ..
                   } => {
                     let Some(inscription_info) =
-                      index.inscription_info(query::Inscription::Id(inscription_id), false)?
+                      index.inscription_relic_info(query::Inscription::Id(inscription_id))?
                     else {
                       response.push(event_with_inscription);
                       continue;
                     };
-                    let mut inscription = inscription_info.2;
-                    let info = inscription_info.0;
-                    let entry = inscription_info.3;
 
-                    if let Some(delegate) = inscription.delegate() {
-                      let delegate_inscription = index
-                        .get_inscription_by_id(delegate)?
-                        .ok_or_not_found(|| format!("delegate {inscription_id}"))?;
-                      inscription.body = Some(Vec::new());
-                      inscription.content_type = delegate_inscription.content_type;
-                    }
-
-                    let charms =
-                      Charm::Vindicated.unset(info.charms.iter().fold(0, |mut acc, charm| {
-                        charm.set(&mut acc);
-                        acc
-                      }));
-                    let mut charm_icons = Vec::new();
-                    for charm in Charm::ALL {
-                      if charm.is_set(charms) {
-                        charm_icons.push(charm.icon().to_string());
-                      }
-                    }
-
-                    event_with_inscription.inscription = Some(ShibescriptionJson {
-                      chain: page_config.chain,
-                      genesis_fee: entry.fee,
-                      genesis_height: entry.height,
-                      inscription,
-                      inscription_id,
-                      next: info.next,
-                      inscription_number: entry.inscription_number,
-                      output: None,
-                      address: None,
-                      previous: info.previous,
-                      sat: entry.sat,
-                      satpoint: new_location,
-                      timestamp: timestamp(entry.timestamp.into()),
-                      relic_sealed: info.relic_sealed,
-                      relic_enshrined: info.relic_enshrined,
-                      syndicate: info.syndicate,
-                      charms: charm_icons,
-                      child_count: info.child_count,
-                      children: info.children,
+                    event_with_inscription.inscription = Some(RelicShibescriptionJson {
+                      is_bonestone: inscription_info.is_bonestone,
+                      relic_sealed: inscription_info.relic_sealed,
+                      relic_enshrined: inscription_info.relic_enshrined,
                     });
                     response.push(event_with_inscription);
                   }
@@ -1469,7 +1431,7 @@ impl Server {
                   }
                 }
               } else {
-                response.push(EventWithInscriptionInfo {
+                response.push(EventWithRelicInscriptionInfo {
                   block_height: event.block_height,
                   event_index: event.event_index,
                   txid: event.txid,

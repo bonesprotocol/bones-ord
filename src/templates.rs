@@ -8,7 +8,7 @@ pub(crate) use {
   input::InputHtml,
   inscription::{
     InscriptionByAddressJson, InscriptionDecoded, InscriptionDecodedHtml, InscriptionHtml,
-    InscriptionJson, ShibescriptionJson,
+    InscriptionJson, RelicShibescriptionJson, ShibescriptionJson,
   },
   inscriptions::InscriptionsHtml,
   metadata::MetadataHtml,

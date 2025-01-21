@@ -1,4 +1,4 @@
-use crate::templates::ShibescriptionJson;
+use crate::templates::{RelicShibescriptionJson, ShibescriptionJson};
 use {super::*, bincode::Options, redb::TypeName, std::cmp::Ordering};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -16,7 +16,7 @@ pub enum EventInfo {
     old_location: SatPoint,
     sequence_number: u32,
   },
-  #[serde(rename = "BoneSealed")]
+  #[serde(rename = "BoneClaimed")]
   RelicSealed {
     #[serde(rename = "spaced_bone")]
     spaced_relic: SpacedRelic,
@@ -28,7 +28,7 @@ pub enum EventInfo {
     relic_id: RelicId,
     amount: u128,
   },
-  #[serde(rename = "BoneEnshrined")]
+  #[serde(rename = "BoneDeployed")]
   RelicEnshrined {
     #[serde(rename = "bone_id")]
     relic_id: RelicId,
@@ -122,6 +122,16 @@ pub struct Event {
   pub event_index: u32,
   pub txid: Txid,
   pub info: EventInfo,
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct EventWithRelicInscriptionInfo {
+  pub block_height: u32,
+  pub event_index: u32,
+  pub txid: Txid,
+  pub info: EventInfo,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub inscription: Option<RelicShibescriptionJson>,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]

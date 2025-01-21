@@ -1347,6 +1347,49 @@ impl Index {
     Ok(result)
   }
 
+  pub(crate) fn inscription_relic_info(
+    &self,
+    query: subcommand::server::query::Inscription,
+  ) -> Result<Option<(api::RelicInscription)>> {
+    let rtx = self.database.begin_read()?;
+
+    let sequence_number = match query {
+      subcommand::server::query::Inscription::Id(id) => rtx
+        .open_table(INSCRIPTION_ID_TO_SEQUENCE_NUMBER)?
+        .get(&id.store())?
+        .map(|guard| guard.value()),
+      subcommand::server::query::Inscription::Number(inscription_number) => rtx
+        .open_table(INSCRIPTION_NUMBER_TO_SEQUENCE_NUMBER)?
+        .get(inscription_number)?
+        .map(|guard| guard.value()),
+    };
+
+    let Some(sequence_number) = sequence_number else {
+      return Ok(None);
+    };
+
+    let is_bonestone = self.get_bonestone_by_sequence_number(sequence_number)?;
+    let relic_sealed = rtx
+      .open_table(SEQUENCE_NUMBER_TO_SPACED_RELIC)?
+      .get(sequence_number)?
+      .map(|entry| SpacedRelic::load(entry.value()));
+
+    let relic_enshrined = if let Some(spaced_relic) = relic_sealed {
+      rtx
+        .open_table(RELIC_TO_RELIC_ID)?
+        .get(spaced_relic.relic.store())?
+        .is_some()
+    } else {
+      false
+    };
+
+    Ok(Some(api::RelicInscription {
+      is_bonestone,
+      relic_sealed,
+      relic_enshrined,
+    }))
+  }
+
   pub(crate) fn inscription_info(
     &self,
     query: subcommand::server::query::Inscription,
