@@ -42,7 +42,7 @@ pub struct OutputJson {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OutputCompactJson {
-  pub inscriptions: Vec<InscriptionDecodedHtml>,
+  pub inscriptions: Vec<InscriptionCompactHtml>,
   #[serde(rename = "bones")]
   pub relics: BTreeMap<SpacedRelic, Pile>,
 }
@@ -76,7 +76,7 @@ impl OutputJson {
 
 impl OutputCompactJson {
   pub fn new(
-    inscriptions: Vec<InscriptionDecodedHtml>,
+    inscriptions: Vec<InscriptionCompactHtml>,
     relics: BTreeMap<SpacedRelic, Pile>,
   ) -> Self {
     Self {

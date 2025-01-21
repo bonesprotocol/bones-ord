@@ -1,5 +1,5 @@
 use crate::index::event::{EventInfo, EventWithInscriptionInfo, EventWithRelicInscriptionInfo};
-use crate::templates::RelicShibescriptionJson;
+use crate::templates::{InscriptionCompactHtml, RelicShibescriptionJson};
 use {
   self::{
     deserialize_from_str::DeserializeFromStr,
@@ -873,52 +873,22 @@ impl Server {
       let mut inscriptions = Vec::new();
 
       for id in inscription_ids {
-        let Some(inscription_info) = index.inscription_info(query::Inscription::Id(id), false)?
+        let Some(inscription_info) = index.inscription_relic_info(query::Inscription::Id(id))?
         else {
           return Err(ServerError::BadRequest(
             "inscription data not found".to_string(),
           ));
         };
 
-        let inscription = inscription_info.2;
-        let info = inscription_info.0;
-        let entry = inscription_info.3;
-
-        let body = if query.no_content.unwrap_or(false) {
-          None
-        } else {
-          inscription.body.clone()
-        };
-
         let satpoint = index
           .get_inscription_satpoint_by_id(id)?
           .ok_or_not_found(|| format!("inscription {id}"))?;
 
-        let inscription_html = InscriptionDecodedHtml {
-          chain: server_config.chain,
-          genesis_fee: entry.fee,
-          genesis_height: entry.height,
-          inscription: InscriptionDecoded {
-            body,
-            content_type: inscription.content_type().map(|s| s.to_string()),
-            delegate: inscription.delegate(),
-            metadata: inscription.metadata(),
-            parents: inscription.parents(),
-          },
-          inscription_id: entry.id,
-          inscription_number: entry.inscription_number,
-          next: info.next,
-          output: None, // not returned here for perf reasons
-          previous: info.previous,
-          sat: entry.sat,
+        let inscription_html = InscriptionCompactHtml {
+          inscription_id: inscription_info.id,
           satpoint,
-          timestamp: timestamp(entry.timestamp.into()),
-          relic_sealed: info.relic_sealed,
-          relic_enshrined: info.relic_enshrined,
-          syndicate: info.syndicate,
-          charms: info.charms.iter().map(|c| c.icon().to_string()).collect(),
-          child_count: info.child_count,
-          children: info.children,
+          relic_sealed: inscription_info.relic_sealed,
+          relic_enshrined: inscription_info.relic_enshrined,
         };
 
         inscriptions.push(inscription_html);

@@ -11,6 +11,7 @@ use {
 
 #[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
 pub struct RelicInscription {
+  pub id: InscriptionId,
   pub is_bonestone: bool,
   // if this Inscription has sealed a Relic ticker
   #[serde(rename = "bone_claimed")]

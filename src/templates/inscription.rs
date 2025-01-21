@@ -35,6 +35,16 @@ pub(crate) struct InscriptionHtml {
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub(crate) struct InscriptionCompactHtml {
+  pub(crate) inscription_id: InscriptionId,
+  pub(crate) satpoint: SatPoint,
+  #[serde(rename = "bone_claimed")]
+  pub(crate) relic_sealed: Option<SpacedRelic>,
+  #[serde(rename = "bone_deployed")]
+  pub(crate) relic_enshrined: bool,
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub(crate) struct InscriptionDecodedHtml {
   pub(crate) chain: Chain,
   pub(crate) genesis_fee: u64,

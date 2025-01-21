@@ -1368,6 +1368,16 @@ impl Index {
       return Ok(None);
     };
 
+    let sequence_number_to_inscription_entry =
+      rtx.open_table(SEQUENCE_NUMBER_TO_INSCRIPTION_ENTRY)?;
+
+    let entry = InscriptionEntry::load(
+      sequence_number_to_inscription_entry
+        .get(&sequence_number)?
+        .unwrap()
+        .value(),
+    );
+
     let is_bonestone = self.get_bonestone_by_sequence_number(sequence_number)?;
     let relic_sealed = rtx
       .open_table(SEQUENCE_NUMBER_TO_SPACED_RELIC)?
@@ -1384,6 +1394,7 @@ impl Index {
     };
 
     Ok(Some(api::RelicInscription {
+      id: entry.id,
       is_bonestone,
       relic_sealed,
       relic_enshrined,
