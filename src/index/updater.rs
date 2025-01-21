@@ -421,6 +421,7 @@ impl<'index> Updater<'_> {
     let mut sat_to_sequence_number = wtx.open_multimap_table(SAT_TO_SEQUENCE_NUMBER)?;
     let mut sequence_number_to_children = wtx.open_multimap_table(SEQUENCE_NUMBER_TO_CHILDREN)?;
 
+    let mut sequence_number_to_spaced_relic = wtx.open_table(SEQUENCE_NUMBER_TO_SPACED_RELIC)?;
     let mut sequence_number_to_bonestone_block_height =
       wtx.open_table(SEQUENCE_NUMBER_TO_BONESTONE_BLOCK_HEIGHT)?;
 
@@ -450,6 +451,7 @@ impl<'index> Updater<'_> {
         &mut sequence_number_to_bonestone_block_height,
         &mut sequence_number_to_children,
         &mut sequence_number_to_satpoint,
+        &mut sequence_number_to_spaced_relic,
         &mut transaction_id_to_transaction,
         lost_sats,
         &mut outpoint_to_value,

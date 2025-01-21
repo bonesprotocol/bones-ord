@@ -50,6 +50,7 @@ pub(super) struct InscriptionUpdater<'a, 'tx, 'emitter> {
   sequence_number_to_bonestone_block_height: &'a mut Table<'tx, u32, u32>,
   sequence_number_to_children: &'a mut MultimapTable<'tx, u32, u32>,
   sequence_number_to_satpoint: &'a mut Table<'tx, u32, &'static SatPointValue>,
+  sequence_number_to_spaced_relic: &'a mut Table<'tx, u32, SpacedRelicValue>,
   transaction_id_to_transaction: &'a mut Table<'tx, &'static TxidValue, &'static [u8]>,
   lost_sats: u64,
   next_number: u64,
@@ -84,6 +85,7 @@ impl<'a, 'tx, 'emitter> InscriptionUpdater<'a, 'tx, 'emitter> {
     sequence_number_to_bonestone_block_height: &'a mut Table<'tx, u32, u32>,
     sequence_number_to_children: &'a mut MultimapTable<'tx, u32, u32>,
     sequence_number_to_satpoint: &'a mut Table<'tx, u32, &'static SatPointValue>,
+    sequence_number_to_spaced_relic: &'a mut Table<'tx, u32, SpacedRelicValue>,
     transaction_id_to_transaction: &'a mut Table<'tx, &'static TxidValue, &'static [u8]>,
     lost_sats: u64,
     outpoint_to_value: &'a mut Table<'tx, &'static OutPointValue, u64>,
@@ -128,6 +130,7 @@ impl<'a, 'tx, 'emitter> InscriptionUpdater<'a, 'tx, 'emitter> {
       sequence_number_to_bonestone_block_height,
       sequence_number_to_children,
       sequence_number_to_satpoint,
+      sequence_number_to_spaced_relic,
       transaction_id_to_transaction,
       lost_sats,
       next_number,
@@ -457,6 +460,7 @@ impl<'a, 'tx, 'emitter> InscriptionUpdater<'a, 'tx, 'emitter> {
             &InscriptionEntry { charms, ..entry }.store(),
           )?;
         }
+
         // emit events only for valid bonestones
         if let Some(_height) = self
           .sequence_number_to_bonestone_block_height
@@ -472,6 +476,25 @@ impl<'a, 'tx, 'emitter> InscriptionUpdater<'a, 'tx, 'emitter> {
             },
           )?;
         }
+
+        let relic_sealed = self
+          .sequence_number_to_spaced_relic
+          .get(sequence_number)?
+          .map(|entry| SpacedRelic::load(entry.value()));
+
+        // also emit transfer event if relic_sealed is present
+        if relic_sealed.is_some() {
+          self.event_emitter.emit(
+            txid,
+            EventInfo::InscriptionTransferred {
+              inscription_id,
+              new_location: new_satpoint,
+              old_location: old_satpoint,
+              sequence_number,
+            },
+          )?;
+        }
+
         self
           .satpoint_to_sequence_number
           .remove_all(&old_satpoint.store())?;
