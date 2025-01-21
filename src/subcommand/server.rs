@@ -886,6 +886,7 @@ impl Server {
 
         let inscription_html = InscriptionCompactHtml {
           inscription_id: inscription_info.id,
+          is_bonestone: inscription_info.is_bonestone,
           satpoint,
           relic_sealed: inscription_info.relic_sealed,
           relic_enshrined: inscription_info.relic_enshrined,

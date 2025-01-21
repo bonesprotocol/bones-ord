@@ -37,6 +37,7 @@ pub(crate) struct InscriptionHtml {
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub(crate) struct InscriptionCompactHtml {
   pub(crate) inscription_id: InscriptionId,
+  pub(crate) is_bonestone: bool,
   pub(crate) satpoint: SatPoint,
   #[serde(rename = "bone_claimed")]
   pub(crate) relic_sealed: Option<SpacedRelic>,
