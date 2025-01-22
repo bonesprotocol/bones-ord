@@ -451,6 +451,7 @@ impl<'index> Updater<'_> {
         &mut sequence_number_to_bonestone_block_height,
         &mut sequence_number_to_children,
         &mut sequence_number_to_satpoint,
+        // not really clean to have this as a dependency but ok for now
         &mut sequence_number_to_spaced_relic,
         &mut transaction_id_to_transaction,
         lost_sats,
@@ -574,7 +575,6 @@ impl<'index> Updater<'_> {
       let mut relic_to_relic_id = wtx.open_table(RELIC_TO_RELIC_ID)?;
       let mut relic_owner_to_claimable = wtx.open_table(RELIC_OWNER_TO_CLAIMABLE)?;
       let mut transaction_id_to_relic = wtx.open_table(TRANSACTION_ID_TO_RELIC)?;
-      let mut sequence_number_to_spaced_relic = wtx.open_table(SEQUENCE_NUMBER_TO_SPACED_RELIC)?;
       let mut sequence_number_to_syndicate_id = wtx.open_table(SEQUENCE_NUMBER_TO_SYNDICATE_ID)?;
       let mut sequence_number_to_chest = wtx.open_table(SEQUENCE_NUMBER_TO_CHEST)?;
       let mut syndicate_to_chest_sequence_number =
