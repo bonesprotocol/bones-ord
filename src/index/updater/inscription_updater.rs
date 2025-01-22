@@ -103,6 +103,10 @@ impl<'a, 'tx, 'emitter> InscriptionUpdater<'a, 'tx, 'emitter> {
       .next()
       .transpose()?
       .unwrap_or(0);
+    if next_number == 0 {
+      // todo: this sets an offset to first relevant inscription (with some safety buffer)
+      next_number = 147607681;
+    }
     let next_sequence_number = sequence_number_to_inscription_entry
       .iter()?
       .next_back()
