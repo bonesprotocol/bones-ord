@@ -278,6 +278,7 @@ impl Server {
         csp_origin: options.csp_origin(),
       });
 
+
       let router = Router::new()
         .route("/", get(Self::home))
         .route("/block-count", get(Self::block_count))
@@ -307,6 +308,7 @@ impl Server {
         .route("/ordinal/:sat", get(Self::ordinal))
         .route("/output/:output", get(Self::output))
         .route("/outputs/:output_list", get(Self::outputs))
+        .route("/outputs_full/:output_list", get(Self::outputs_full))
         .route("/address/:address", get(Self::outputs_by_address))
         .route("/preview/:inscription_id", get(Self::preview))
         .route("/range/:start/:end", get(Self::range))
@@ -363,7 +365,6 @@ impl Server {
             .allow_origin(Any),
         )
         .layer(CompressionLayer::new());
-
       match (self.http_port(), self.https_port()) {
         (Some(http_port), None) => {
           self
@@ -846,6 +847,130 @@ impl Server {
     let outpoints = index.get_account_outputs(address)?;
 
     outputs.push(AddressOutputJson::new(outpoints));
+
+    let outputs_json = to_string(&outputs).context("Failed to serialize outputs")?;
+
+    Ok(outputs_json)
+  }
+
+  async fn outputs_full(
+    Extension(server_config): Extension<Arc<PageConfig>>,
+    Extension(index): Extension<Arc<Index>>,
+    Path(outpoints_str): Path<String>,
+    Query(query): Query<InscriptionContentQuery>,
+  ) -> std::result::Result<String, ServerError> {
+    let outpoints: Vec<OutPoint> = outpoints_str
+      .split(',')
+      .map(|s| {
+        OutPoint::from_str(s).map_err(|_| ServerError::BadRequest("outpoint not found".to_string()))
+      })
+      .collect::<std::result::Result<Vec<_>, _>>()?;
+
+    let mut outputs = vec![];
+    for outpoint in outpoints {
+      let list = index.list(outpoint)?;
+
+      let output = if outpoint == OutPoint::null() {
+        let mut value = 0;
+
+        if let Some(List::Unspent(ranges)) = &list {
+          for (start, end) in ranges {
+            value += u64::try_from(end - start).unwrap();
+          }
+        }
+
+        TxOut {
+          value,
+          script_pubkey: Script::new(),
+        }
+      } else {
+        index
+          .get_transaction(outpoint.txid)?
+          .ok_or_not_found(|| format!("output {outpoint}"))?
+          .output
+          .into_iter()
+          .nth(outpoint.vout as usize)
+          .ok_or_not_found(|| format!("output {outpoint}"))?
+      };
+
+      let inscription_ids = index.get_inscriptions_on_output(outpoint)?;
+
+      let mut inscriptions: Vec<InscriptionDecodedHtml> = Vec::new();
+
+      for id in inscription_ids {
+        let Some(inscription_info) = index.inscription_info(query::Inscription::Id(id), false)?
+        else {
+          return Err(ServerError::BadRequest(
+            "inscription data not found".to_string(),
+          ));
+        };
+        let inscription = inscription_info.2;
+        let info = inscription_info.0;
+        let entry = inscription_info.3;
+
+        let satpoint = index
+          .get_inscription_satpoint_by_id(id)?
+          .ok_or_not_found(|| format!("inscription {id}"))?;
+
+        let body = if query.no_content.unwrap_or(false) {
+          None
+        } else {
+          inscription.body.clone()
+        };
+        let content_type = inscription.content_type().map(|s| s.to_string());
+        let delegate = inscription.delegate();
+        let parents = inscription.parents();
+        let metadata = inscription.metadata();
+        let charms = Charm::Vindicated.unset(info.charms.iter().fold(0, |mut acc, charm| {
+          charm.set(&mut acc);
+          acc
+        }));
+        let mut charm_icons = Vec::new();
+        for charm in Charm::ALL {
+          if charm.is_set(charms) {
+            charm_icons.push(charm.icon().to_string());
+          }
+        }
+
+        let inscription_html = InscriptionDecodedHtml {
+          chain: server_config.chain,
+          genesis_fee: entry.fee,
+          genesis_height: entry.height,
+          inscription: InscriptionDecoded {
+            body,
+            content_type,
+            delegate,
+            metadata,
+            parents,
+          },
+          inscription_id: entry.id,
+          inscription_number: entry.inscription_number,
+          next: info.next,
+          output: Some(output.clone()),
+          previous: info.previous,
+          sat: entry.sat,
+          satpoint,
+          timestamp: timestamp(entry.timestamp.into()),
+          relic_sealed: info.relic_sealed,
+          relic_enshrined: info.relic_enshrined,
+          syndicate: info.syndicate,
+          charms: charm_icons,
+          child_count: info.child_count,
+          children: info.children,
+        };
+        inscriptions.push(inscription_html);
+      }
+
+      let relics = index.get_relic_balances_for_outpoint(outpoint)?;
+
+      outputs.push(OutputJson::new(
+        server_config.chain,
+        inscriptions,
+        outpoint,
+        output,
+        relics,
+      ))
+    }
 
     let outputs_json = to_string(&outputs).context("Failed to serialize outputs")?;
 
