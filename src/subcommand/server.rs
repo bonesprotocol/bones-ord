@@ -335,6 +335,7 @@ impl Server {
         .route("/tx/:txid", get(Self::transaction))
         .route("/events/:block", get(Self::block_events))
         .route("/events", post(Self::tx_events))
+        .route("/events/recent", get(Self::recent_relic_events))
         .route("/events/:bone/:page", get(Self::relic_events_paginated))
         .route("/bone/:bone", get(Self::relic))
         .route("/bones", get(Self::relics))
@@ -1539,6 +1540,53 @@ impl Server {
           }
         }
         Json(response).into_response()
+      } else {
+        StatusCode::NOT_FOUND.into_response()
+      })
+    })
+  }
+
+  async fn recent_relic_events(
+    Extension(index): Extension<Arc<Index>>,
+    Query(query): Query<EventsQuery>,
+  ) -> ServerResult<Response> {
+    task::block_in_place(|| {
+      Ok(if query.json.unwrap_or(false) {
+        let current_height = index.block_count()?;
+        let start_height = current_height.saturating_sub(20);
+        let mut all_events = Vec::new();
+        for height in (start_height..=current_height).rev() {
+          if let Ok(Some(block)) = index.get_block_by_height(height) {
+            for tx in block.txdata {
+              if let Ok(events) = index.events_for_tx(tx.txid()) {
+                for event in events {
+                  match event.info {
+                    EventInfo::RelicMinted { .. } | EventInfo::RelicSwapped { .. } => {
+                      all_events.push(EventWithRelicInscriptionInfo {
+                        block_height: event.block_height,
+                        event_index: event.event_index,
+                        txid: event.txid,
+                        inscription: None,
+                        info: event.info,
+                      });
+                      if all_events.len() >= 1000 {
+                        break;
+                      }
+                    },
+                    _ => continue,
+                  }
+                }
+              }
+              if all_events.len() >= 1000 {
+                break;
+              }
+            }
+            if all_events.len() >= 1000 {
+              break;
+            }
+          }
+        }
+        Json(all_events).into_response()
       } else {
         StatusCode::NOT_FOUND.into_response()
       })
