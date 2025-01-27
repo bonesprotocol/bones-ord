@@ -7,8 +7,8 @@ pub(crate) use {
   iframe::Iframe,
   input::InputHtml,
   inscription::{
-    InscriptionByAddressJson, InscriptionDecoded, InscriptionCompactHtml, InscriptionDecodedHtml, InscriptionHtml,
-    InscriptionJson, RelicShibescriptionJson, ShibescriptionJson,
+    InscriptionByAddressJson, InscriptionCompactHtml, InscriptionDecoded, InscriptionDecodedHtml,
+    InscriptionHtml, InscriptionJson, RelicShibescriptionJson, ShibescriptionJson,
   },
   inscriptions::InscriptionsHtml,
   metadata::MetadataHtml,

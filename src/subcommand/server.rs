@@ -116,8 +116,8 @@ pub(crate) struct InscriptionAddressJson {
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub(crate) struct UtxoAddressJson {
   pub(crate) utxos: Vec<Utxo>,
-  pub(crate) total_utxos: usize,
   pub(crate) total_shibes: u128,
+  pub(crate) total_utxos: usize,
   pub(crate) total_inscription_shibes: u128,
 }
 
@@ -132,6 +132,11 @@ struct UtxoBalanceQuery {
 #[derive(Deserialize)]
 struct OutputsQuery {
   outputs: String,
+}
+
+#[derive(Deserialize)]
+struct OutputsPostQuery {
+  outputs: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -278,7 +283,6 @@ impl Server {
         csp_origin: options.csp_origin(),
       });
 
-
       let router = Router::new()
         .route("/", get(Self::home))
         .route("/block-count", get(Self::block_count))
@@ -349,6 +353,7 @@ impl Server {
         .route("/syndicates/:page", get(Self::syndicates_paginated))
         .route("/bonestones", get(Self::bonestones))
         .route("/bonestones/length", get(Self::bonestones_length))
+        .route("/outputs", post(Self::outputs_post))
         .layer(Extension(index))
         .layer(Extension(page_config))
         .layer(Extension(Arc::new(config)))
@@ -362,7 +367,7 @@ impl Server {
         ))
         .layer(
           CorsLayer::new()
-            .allow_methods([http::Method::GET])
+            .allow_methods([http::Method::GET, http::Method::POST])
             .allow_origin(Any),
         )
         .layer(CompressionLayer::new());
@@ -1502,6 +1507,7 @@ impl Server {
                   txid: event.txid,
                   inscription: None,
                   info: event.info.clone(),
+                  ticker: None,
                 };
                 match event.info {
                   EventInfo::InscriptionTransferred {
@@ -1534,6 +1540,7 @@ impl Server {
                   txid: event.txid,
                   inscription: None,
                   info: event.info,
+                  ticker: None,
                 });
               }
             }
@@ -1553,7 +1560,7 @@ impl Server {
     task::block_in_place(|| {
       Ok(if query.json.unwrap_or(false) {
         let current_height = index.block_count()?;
-        let start_height = current_height.saturating_sub(20);
+        let start_height = current_height.saturating_sub(60);
         let mut all_events = Vec::new();
         for height in (start_height..=current_height).rev() {
           if let Ok(Some(block)) = index.get_block_by_height(height) {
@@ -1562,17 +1569,31 @@ impl Server {
                 for event in events {
                   match event.info {
                     EventInfo::RelicMinted { .. } | EventInfo::RelicSwapped { .. } => {
-                      all_events.push(EventWithRelicInscriptionInfo {
+                      // Get the relic ID from the event
+                      let relic_id = event.relic_id();
+                      let mut event_with_info = EventWithRelicInscriptionInfo {
                         block_height: event.block_height,
                         event_index: event.event_index,
                         txid: event.txid,
                         inscription: None,
                         info: event.info,
-                      });
+                        ticker: None,
+                      };
+                      
+                      // If we have a relic ID, try to get its ticker
+                      if let Some(relic_id) = relic_id {
+                        if let Ok(Some(relic)) = index.get_relic_by_id(relic_id) {
+                          if let Ok(Some((_id, entry, _owner))) = index.relic(relic) {
+                            event_with_info.ticker = Some(entry.spaced_relic.to_string());
+                          }
+                        }
+                      }
+                      
+                      all_events.push(event_with_info);
                       if all_events.len() >= 1000 {
                         break;
                       }
-                    },
+                    }
                     _ => continue,
                   }
                 }
@@ -2757,6 +2778,59 @@ impl Server {
     }
 
     Redirect::to(&destination)
+  }
+
+  async fn outputs_post(
+    Extension(index): Extension<Arc<Index>>,
+    Json(body): Json<OutputsPostQuery>,
+  ) -> Result<Response, ServerError> {
+    let outpoints: Vec<OutPoint> = body
+      .outputs
+      .iter()
+      .map(|s| {
+        OutPoint::from_str(s).map_err(|_| ServerError::BadRequest("outpoint not found".to_string()))
+      })
+      .collect::<Result<Vec<_>, _>>()?;
+
+    let mut outputs = vec![];
+
+    for outpoint in outpoints {
+      // Retrieve inscriptions for the outpoint
+      let inscription_ids = index.get_inscriptions_on_output(outpoint)?;
+      let mut inscriptions = Vec::new();
+
+      for id in inscription_ids {
+        let Some(inscription_info) = index.inscription_relic_info(query::Inscription::Id(id))?
+        else {
+          return Err(ServerError::BadRequest(
+            "inscription data not found".to_string(),
+          ));
+        };
+
+        let satpoint = index
+          .get_inscription_satpoint_by_id(id)?
+          .ok_or_not_found(|| format!("inscription {id}"))?;
+
+        let inscription_html = InscriptionCompactHtml {
+          inscription_id: inscription_info.id,
+          is_bonestone: inscription_info.is_bonestone,
+          satpoint,
+          relic_sealed: inscription_info.relic_sealed,
+          relic_enshrined: inscription_info.relic_enshrined,
+        };
+
+        inscriptions.push(inscription_html);
+      }
+
+      // Retrieve relic balances for the outpoint
+      let relics = index.get_relic_balances_for_outpoint(outpoint)?;
+
+      // Create compact JSON structure
+      let output_compact = OutputCompactJson::new(inscriptions, relics);
+      outputs.push(output_compact);
+    }
+
+    Ok(Json(outputs).into_response())
   }
 }
 

@@ -132,6 +132,8 @@ pub struct EventWithRelicInscriptionInfo {
   pub info: EventInfo,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub inscription: Option<RelicShibescriptionJson>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub ticker: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
