@@ -9,6 +9,8 @@ pub enum RelicError {
   Unmintable,
   MintCap(u128),
   MintInsufficientBalance(u128),
+  UnmintNotAllowed,
+  NoMintsToUnmint,
   SwapNotAvailable,
   SwapHeightNotReached(u64),
   SwapFailed(PoolError),
@@ -16,6 +18,7 @@ pub enum RelicError {
   InscriptionMissing,
   InscriptionMetadataMissing,
   InvalidMetadata,
+  PriceComputationError,
   SyndicateStart(u64),
   SyndicateEnd(u64),
   SyndicateCap(u32),
@@ -43,6 +46,9 @@ impl Display for RelicError {
       RelicError::MintInsufficientBalance(price) => {
         write!(f, "insufficient balance for mint price of {price}")
       }
+      RelicError::UnmintNotAllowed => write!(f, "unmint not allowed (here)"),
+      RelicError::NoMintsToUnmint => write!(f, "no mints to unmint"),
+      RelicError::PriceComputationError => write!(f, "cannot compute mint price"),
       RelicError::SwapNotAvailable => write!(f, "liquidity pool for swap not available (yet)"),
       RelicError::SwapHeightNotReached(swap_height) => {
         write!(

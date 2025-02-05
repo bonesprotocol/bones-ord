@@ -13,8 +13,10 @@ pub(super) enum Tag {
   Price = 16,
   Subsidy = 18,
   SwapHeight = 22,
+  Unmintable = 24,
   // Mint
   Mint = 20,
+  Unmint = 70,
   // Swap
   SwapInput = 30,
   SwapOutput = 32,

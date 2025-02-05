@@ -6,6 +6,7 @@ pub enum RelicFlaw {
   EnshriningAndSummoning,
   InvalidEnshrining,
   InvalidBaseTokenMint,
+  InvalidBaseTokenUnmint,
   InvalidScript,
   InvalidSwap,
   Opcode,
@@ -29,6 +30,7 @@ impl Display for RelicFlaw {
         f,
         "invalid mint: to mint the base token eligible inscriptions must be burned"
       ),
+      Self::InvalidBaseTokenUnmint => write!(f, "cannot unmint base token"),
       Self::InvalidScript => write!(f, "invalid script in OP_RETURN"),
       Self::InvalidSwap => write!(f, "invalid swap: input and output cannot be the same Relic"),
       Self::Opcode => write!(f, "non-pushdata opcode in OP_RETURN"),

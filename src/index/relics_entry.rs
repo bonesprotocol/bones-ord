@@ -1,7 +1,7 @@
 use {
   super::*,
   crate::relics::{
-    BalanceDiff, MintTerms, Pool, PoolSwap, Relic, RelicError, RelicId, SpacedRelic,
+    BalanceDiff, MintTerms, Pool, PoolSwap, PriceModel, Relic, RelicError, RelicId, SpacedRelic,
   },
   bitcoin::ScriptHash,
 };
@@ -138,7 +138,9 @@ impl RelicEntry {
       return Err(RelicError::MintCap(cap));
     }
 
-    let price = terms.price.unwrap_or_default();
+    let price = terms
+      .compute_price(self.state.mints)
+      .ok_or(RelicError::PriceComputationError)?;
 
     if base_balance < price {
       return Err(RelicError::MintInsufficientBalance(price));
@@ -209,44 +211,91 @@ impl RelicEntry {
   }
 
   pub fn locked_base_supply(&self) -> u128 {
-    self.pool.map(|pool| pool.base_supply).unwrap_or(
-      self.state.mints
-        * self
-          .mint_terms
-          .and_then(|terms| terms.price)
-          .unwrap_or_default(),
-    )
+    if let Some(pool) = self.pool {
+      pool.base_supply
+    } else if let Some(terms) = self.mint_terms {
+      match terms.price {
+        Some(PriceModel::Fixed(fixed)) => self.state.mints * fixed,
+        Some(PriceModel::Formula { .. }) => {
+          let mut total: u128 = 0;
+          for x in 0..self.state.mints {
+            total = total.saturating_add(terms.compute_price(x).unwrap_or(0));
+          }
+          total
+        }
+        None => 0,
+      }
+    } else {
+      0
+    }
   }
 }
 
 type MintTermsValue = (
   Option<u128>, // amount
   Option<u128>, // cap
-  Option<u128>, // price
+  Option<u128>, // stored price:
+  //   - Some(n) with n != 0 represents PriceModel::Fixed(n)
+  //   - Some(0) indicates formula pricing (with a, b, c below)
+  Option<u128>, // formula_a (for formula pricing)
+  Option<u128>, // formula_b (for formula pricing)
+  Option<u128>, // formula_c (for formula pricing)
   Option<u128>, // seed
   Option<u64>,  // swap_height
+  Option<bool>, // unmintable
 );
 
 impl Entry for MintTerms {
   type Value = MintTermsValue;
 
-  fn load((amount, cap, price, seed, swap_height): Self::Value) -> Self {
+  fn load((
+      amount,
+      cap,
+      price_type,
+      price_fixed_or_a,
+      formula_b,
+      formula_c,
+      seed,
+      swap_height,
+      unmintable,
+    ): Self::Value) -> Self {
+    let price = match price_type {
+      Some(1) => price_fixed_or_a.map(|p| PriceModel::Fixed(p)),
+      Some(2) => {
+        if let (Some(a), Some(b), Some(c)) = (price_fixed_or_a, formula_b, formula_c) {
+          Some(PriceModel::Formula { a, b, c })
+        } else {
+          None
+        }
+      }
+      _ => None,
+    };
     Self {
       amount,
       cap,
       price,
       seed,
       swap_height,
+      unmintable,
     }
   }
 
   fn store(self) -> Self::Value {
+    let (price_type, price_fixed_or_a, formula_b, formula_c) = match self.price {
+      Some(PriceModel::Fixed(p)) => (Some(1), Some(p), None, None),
+      Some(PriceModel::Formula { a, b, c }) => (Some(2), Some(a), Some(b), Some(c)),
+      None => (None, None, None, None),
+    };
     (
       self.amount,
       self.cap,
-      self.price,
+      price_type,
+      price_fixed_or_a,
+      formula_b,
+      formula_c,
       self.seed,
       self.swap_height,
+      self.unmintable,
     )
   }
 }
@@ -406,6 +455,7 @@ mod tests {
         price: Some(8),
         seed: Some(22),
         swap_height: Some(400_000),
+        unmintable: false,
       }),
       state: RelicState {
         burned: 33,

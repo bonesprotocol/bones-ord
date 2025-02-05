@@ -1,5 +1,5 @@
 use bitcoin::blockdata::constants::MAX_SCRIPT_ELEMENT_SIZE;
-use {super::*, flag::Flag, message::Message, tag::Tag};
+use {super::*, enshrining::PriceModel, flag::Flag, message::Message, tag::Tag};
 
 mod flag;
 mod message;
@@ -22,6 +22,8 @@ pub struct Keepsake {
   pub enshrining: Option<Enshrining>,
   /// mint given Relic
   pub mint: Option<RelicId>,
+  // unmint
+  pub unmint: Option<RelicId>,
   /// execute token swap
   pub swap: Option<Swap>,
   /// summon a Syndicate
@@ -95,14 +97,29 @@ impl Keepsake {
       mint_terms: Flag::MintTerms.take(&mut flags).then(|| MintTerms {
         amount: Tag::Amount.take(&mut fields, |[amount]| Some(amount)),
         cap: Tag::Cap.take(&mut fields, |[cap]| Some(cap)),
-        price: Tag::Price.take(&mut fields, |[price]| Some(price)),
+        price: Tag::Price.take(&mut fields, |values: [u128; 1]| {
+          Some(PriceModel::Fixed(values[0]))
+        }).or_else(|| {
+          Tag::Price.take(&mut fields, |values: [u128; 4]| {
+            if values[0] == 0 {
+              Some(PriceModel::Formula { a: values[1], b: values[2], c: values[3] })
+            } else {
+              None
+            }
+          })
+        }),
         seed: get_non_zero(Tag::Seed, &mut fields),
         swap_height: Tag::SwapHeight.take(&mut fields, |[height]| u64::try_from(height).ok()),
+        unmintable: Tag::Unmintable.take(&mut fields, |[val]| {
+          // interpret 1 => true, 0 => false
+          Some(val != 0)
+        }),
       }),
       turbo: Flag::Turbo.take(&mut flags),
     });
 
     let mint = get_relic_id(Tag::Mint, &mut fields);
+    let unmint = get_relic_id(Tag::Unmint, &mut fields);
 
     let swap = Flag::Swap.take(&mut flags).then(|| Swap {
       input: get_relic_id(Tag::SwapInput, &mut fields),
@@ -144,25 +161,45 @@ impl Keepsake {
     }
 
     // check for overflows or if mint terms are given, but the cap is zero
-    if enshrining
-      .map(|enshrining| {
-        let invalid_mint_cap = enshrining
-          .mint_terms
-          .map(|terms| terms.cap.unwrap_or_default() == 0)
-          .unwrap_or_default();
-        invalid_mint_cap
-          || enshrining.max_supply().is_none()
-          || enshrining.total_mint_value().is_none()
-      })
-      .unwrap_or_default()
-    {
-      flaw.get_or_insert(RelicFlaw::InvalidEnshrining);
+    if let Some(enshrining) = enshrining {
+      let terms_valid = enshrining.mint_terms.as_ref().map_or(false, |terms| {
+        // Require a nonzero cap.
+        if let Some(cap) = terms.cap {
+          if cap == 0 {
+            return false;
+          }
+          match terms.price {
+            Some(PriceModel::Fixed(price)) => {
+              // For fixed pricing, check multiplication doesn't overflow.
+              cap.checked_mul(price).is_some()
+            }
+            Some(PriceModel::Formula { a, b, c }) => {
+              // For formula pricing:
+              //   • c must be nonzero (avoid division by zero)
+              //   • a >= b / c (avoid underflow at x=0)
+              //   • cap must not exceed 1,000,000
+              c > 0 && (b / c) <= a && cap <= 1_000_000
+            }
+            None => false,
+          }
+        } else {
+          false
+        }
+      });
+      if !terms_valid || enshrining.max_supply().is_none() {
+        flaw.get_or_insert(RelicFlaw::InvalidEnshrining);
+      }
     }
 
     // the base token must not be minted the usual way,
     // instead it is minted by burning eligible inscriptions
     if mint.map(|id| id == RELIC_ID).unwrap_or_default() {
       flaw.get_or_insert(RelicFlaw::InvalidBaseTokenMint);
+    }
+
+    // base token is not unmintable but check for extra security here
+    if unmint.map(|id| id == RELIC_ID).unwrap_or_default() {
+      flaw.get_or_insert(RelicFlaw::InvalidBaseTokenUnmint);
     }
 
     // make sure to not swap from and to the same token
@@ -192,6 +229,7 @@ impl Keepsake {
       sealing,
       enshrining,
       mint,
+      unmint,
       swap,
       summoning,
       encasing,
@@ -225,7 +263,18 @@ impl Keepsake {
         Flag::MintTerms.set(&mut flags);
         Tag::Amount.encode_option(terms.amount, &mut payload);
         Tag::Cap.encode_option(terms.cap, &mut payload);
-        Tag::Price.encode_option(terms.price, &mut payload);
+        if let Some(price_model) = terms.price {
+          match price_model {
+            PriceModel::Fixed(price) => {
+              // Legacy fixed price: encode as a single integer.
+              Tag::Price.encode([price], &mut payload);
+            }
+            PriceModel::Formula { a, b, c } => {
+              // New formula: encode a marker (0) then a, b, and c.
+              Tag::Price.encode([0, a, b, c], &mut payload);
+            }
+          }
+        }
         Tag::Seed.encode_option(terms.seed, &mut payload);
         Tag::SwapHeight.encode_option(terms.swap_height, &mut payload);
       }
@@ -1243,7 +1292,7 @@ mod tests {
           mint_terms: Some(MintTerms {
             amount: Some(100),
             cap: Some(100_000),
-            price: Some(321),
+            price: Some(PriceModel::Fixed(321)),
             seed: Some(300),
             swap_height: Some(400_000),
           }),
@@ -1607,7 +1656,7 @@ mod tests {
         mint_terms: Some(MintTerms {
           amount: Some(100),
           cap: Some(100_000),
-          price: Some(123),
+          price: Some(PriceModel::Fixed(321)),
           seed: Some(200),
           swap_height: Some(400_000),
         }),
@@ -1932,7 +1981,7 @@ mod tests {
           mint_terms: Some(MintTerms {
             amount: Some(100),
             cap: Some(100_000),
-            price: Some(123),
+            price: Some(PriceModel::Fixed(321)),
             seed: Some(200),
             swap_height: Some(400_000),
           }),

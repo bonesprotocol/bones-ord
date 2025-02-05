@@ -2,7 +2,7 @@ use super::*;
 use crate::index::relics_entry::{RelicEntry, RelicState};
 use crate::relics::enshrining::Enshrining;
 use crate::relics::relic_id::RelicId;
-use crate::relics::{MintTerms, Pool, SpacedRelic};
+use crate::relics::{MintTerms, Pool, PriceModel, SpacedRelic};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RelicEntryHtml {

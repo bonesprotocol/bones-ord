@@ -391,6 +391,7 @@ impl Index {
                   price: None,
                   seed: None,
                   swap_height: None,
+                  unmintable: None,
                 }),
                 state: RelicState {
                   subsidy_locked: true,

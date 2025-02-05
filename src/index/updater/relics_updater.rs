@@ -11,7 +11,7 @@ use {
       updater::relics_balance::RelicsBalance,
     },
     relics::{
-      BalanceDiff, Enshrining, Keepsake, Pool, PoolSwap, RelicArtifact, RelicError, SpacedRelic,
+      BalanceDiff, Enshrining, Keepsake, Pool, PoolSwap, PriceModel, RelicArtifact, RelicError, SpacedRelic,
       Summoning, Swap, SwapDirection, RELIC_ID,
     },
   },
@@ -154,6 +154,36 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
                 txid,
                 EventInfo::RelicError {
                   operation: RelicOperation::Mint,
+                  error,
+                },
+              )?;
+            }
+          }
+        }
+      }
+
+      if let Some(id) = keepsake.unmint.filter(|id| *id != RelicId::default()) {
+        if enshrined_relic.is_some() {
+          eprintln!("Unmint error: Unmint not allowed in transaction with enshrined relic");
+          self.event_emitter.emit(
+            txid,
+            EventInfo::RelicError {
+              operation: RelicOperation::Unmint,
+              error: RelicError::UnmintNotAllowed,
+            },
+          )?;
+        } else {
+          match self.unmint(txid, id, balances.get(RELIC_ID))? {
+            Ok((amount, price)) => {
+              balances.remove(RELIC_ID, price);
+              balances.add(id, amount);
+            }
+            Err(error) => {
+              eprintln!("Unmint error: {error}");
+              self.event_emitter.emit(
+                txid,
+                EventInfo::RelicError {
+                  operation: RelicOperation::Unmint,
                   error,
                 },
               )?;
@@ -1074,6 +1104,60 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
         relic_id: id,
         amount,
       },
+    )?;
+
+    Ok(Ok((Lot(amount), Lot(price))))
+  }
+
+  fn unmint(
+    &mut self,
+    txid: Txid,
+    id: RelicId,
+    _base_balance: u128,
+  ) -> Result<Result<(Lot, Lot), RelicError>> {
+    // Unminting is only allowed for non-base tokens.
+    assert_ne!(id, RELIC_ID, "unmint for base token is not allowed");
+
+    let mut relic_entry = self
+      .load_relic_entry(id)?
+      .ok_or_else(|| anyhow::anyhow!(RelicError::RelicNotFound(id)))?;
+
+    // There must be at least one mint to revert.
+    if relic_entry.state.mints == 0 {
+      return Ok(Err(RelicError::NoMintsToUnmint));
+    }
+
+    // If the liquidity pool is already created (mint cap reached), unminting is not allowed.
+    let cap = relic_entry.mint_terms.as_ref().and_then(|terms| terms.cap).unwrap_or(0);
+    if cap != 0 && relic_entry.state.mints == cap {
+      return Ok(Err(RelicError::UnmintNotAllowed));
+    }
+
+    // The mint index to be reverted is the last one.
+    let mint_index = relic_entry.state.mints - 1;
+    let terms = relic_entry
+      .mint_terms
+      .ok_or_else(|| anyhow::anyhow!(RelicError::Unmintable))?;
+    let amount = terms.amount.unwrap_or_default();
+
+    // Compute the price paid for the mint.
+    let price = match terms.price {
+      Some(PriceModel::Fixed(fixed)) => fixed,
+      Some(PriceModel::Formula { .. }) => {
+        terms
+          .compute_price(mint_index)
+          .ok_or_else(|| anyhow::anyhow!(RelicError::PriceComputationError))?
+      }
+      None => return Ok(Err(RelicError::PriceComputationError)),
+    };
+
+    // Reverse the mint by decrementing the minted counter.
+    relic_entry.state.mints = mint_index;
+    self.id_to_entry.insert(&id.store(), relic_entry.store())?;
+
+    self.event_emitter.emit(
+      txid,
+      EventInfo::RelicUnminted { relic_id: id, amount },
     )?;
 
     Ok(Ok((Lot(amount), Lot(price))))

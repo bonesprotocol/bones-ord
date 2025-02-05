@@ -39,6 +39,12 @@ pub enum EventInfo {
     relic_id: RelicId,
     amount: u128,
   },
+  #[serde(rename = "BoneUnminted")]
+  RelicUnminted {
+    #[serde(rename = "bone_id")]
+    relic_id: RelicId,
+    amount: u128,
+  },
   #[serde(rename = "BoneSpent")]
   RelicSpent {
     #[serde(rename = "bone_id")]
@@ -103,6 +109,7 @@ pub enum RelicOperation {
   Seal,
   Enshrine,
   Mint,
+  Unmint,
   Swap,
   Summon,
   Encase,
@@ -151,6 +158,7 @@ impl Event {
     matches!(
       self.info,
       EventInfo::RelicMinted { .. }
+        | EventInfo::RelicUnminted { .. }
         | EventInfo::RelicBurned { .. }
         | EventInfo::RelicSpent { .. }
         | EventInfo::RelicReceived { .. }
@@ -163,6 +171,7 @@ impl Event {
     match self.info {
       EventInfo::RelicEnshrined { relic_id, .. } => Some(relic_id),
       EventInfo::RelicMinted { relic_id, .. } => Some(relic_id),
+      EventInfo::RelicUnminted { relic_id, .. } => Some(relic_id),
       EventInfo::RelicBurned { relic_id, .. } => Some(relic_id),
       EventInfo::RelicSpent { relic_id, .. } => Some(relic_id),
       EventInfo::RelicReceived { relic_id, .. } => Some(relic_id),
