@@ -11,3 +11,4 @@
 /test-times.txt
 /tmp
 .env
+tmp*

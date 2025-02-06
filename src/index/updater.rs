@@ -597,6 +597,7 @@ impl<'index> Updater<'_> {
         id_to_entry: &mut relic_id_to_relic_entry,
         id_to_syndicate: &mut syndicate_id_to_syndicate_entry,
         inscription_id_to_sequence_number: &inscription_id_to_sequence_number,
+        mints_in_block: HashMap::new(),
         outpoint_to_balances: &mut outpoint_to_relic_balances,
         relic_owner_to_claimable: &mut relic_owner_to_claimable,
         relic_to_id: &mut relic_to_relic_id,

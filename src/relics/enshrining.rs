@@ -69,6 +69,8 @@ pub struct MintTerms {
   pub amount: Option<u128>,
   /// maximum number of mints allowed
   pub cap: Option<u128>,
+  /// Maximum number of mints allowed in one block
+  pub max_per_block: Option<u16>,
   /// Maximum number of mints allowed in one transaction
   pub max_per_tx: Option<u32>,
   /// note: must be set, except for RELIC, which does not have a price

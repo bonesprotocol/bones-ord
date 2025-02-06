@@ -99,6 +99,7 @@ impl Keepsake {
       mint_terms: Flag::MintTerms.take(&mut flags).then(|| MintTerms {
         amount: Tag::Amount.take(&mut fields, |[amount]| Some(amount)),
         cap: Tag::Cap.take(&mut fields, |[cap]| Some(cap)),
+        max_per_block: Tag::MaxPerBlock.take(&mut fields, |[val]| u16::try_from(val).ok()),
         max_per_tx: Tag::MaxPerTx.take(&mut fields, |[val]| u32::try_from(val).ok()),
         price: Tag::Price.take(&mut fields, |values: [u128; 1]| {
           Some(PriceModel::Fixed(values[0]))
@@ -198,6 +199,14 @@ impl Keepsake {
           if let Some(max_tx) = terms.max_per_tx {
             if let Some(amount) = terms.amount {
               if (max_tx as u128).checked_mul(amount).is_none() {
+                return false;
+              }
+            }
+          }
+          // If max_per_block is set, check that (max_per_block as u128) × amount doesn't overflow.
+          if let Some(max_block) = terms.max_per_block {
+            if let Some(amount) = terms.amount {
+              if (max_block as u128).checked_mul(amount).is_none() {
                 return false;
               }
             }
@@ -302,6 +311,7 @@ impl Keepsake {
       if let Some(terms) = enshrining.mint_terms {
         Flag::MintTerms.set(&mut flags);
         Tag::Amount.encode_option(terms.amount, &mut payload);
+        Tag::MaxPerBlock.encode_option(terms.max_per_block, &mut payload);
         Tag::MaxPerTx.encode_option(terms.max_per_tx, &mut payload);
         Tag::Cap.encode_option(terms.cap, &mut payload);
         if let Some(price_model) = terms.price {

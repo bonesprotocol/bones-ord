@@ -388,6 +388,7 @@ impl Index {
                   amount: Some(572_000_000),
                   // total amount of bonestone delegate inscriptions
                   cap: Some(3_670_709),
+                  max_per_block: None,
                   max_per_tx: None,
                   price: None,
                   seed: None,

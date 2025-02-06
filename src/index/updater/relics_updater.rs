@@ -28,6 +28,7 @@ pub(super) struct RelicUpdater<'a, 'tx, 'index, 'emitter> {
   pub(super) id_to_entry: &'a mut Table<'tx, RelicIdValue, RelicEntryValue>,
   pub(super) id_to_syndicate: &'a mut Table<'tx, SyndicateIdValue, SyndicateEntryValue>,
   pub(super) inscription_id_to_sequence_number: &'a Table<'tx, &'static InscriptionIdValue, u32>,
+  pub(super) mints_in_block: HashMap<RelicId, u16>,
   pub(super) outpoint_to_balances: &'a mut Table<'tx, &'static OutPointValue, &'static [u8]>,
   pub(super) relic_owner_to_claimable: &'a mut Table<'tx, &'static RelicOwnerValue, u128>,
   pub(super) relic_to_id: &'a mut Table<'tx, u128, RelicIdValue>,
@@ -1150,12 +1151,30 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
       return Ok(Err(RelicError::RelicNotFound(id)));
     };
 
+    // Check per-block mint limit if set.
+    if let Some(terms) = relic_entry.mint_terms {
+      if let Some(max_per_block) = terms.max_per_block {
+        let count = self.mints_in_block.entry(id).or_insert(0);
+        if *count >= max_per_block {
+          return Ok(Err(RelicError::MintBlockCapExceeded(max_per_block)));
+        }
+      }
+    }
+
     let (amount, price) = match relic_entry.mintable(base_balance) {
       Ok(result) => result,
       Err(cause) => {
         return Ok(Err(cause));
       }
     };
+
+    // Increment per-block mint counter.
+    if let Some(terms) = relic_entry.mint_terms {
+      if terms.max_per_block.is_some() {
+        let count = self.mints_in_block.entry(id).or_insert(0);
+        *count += 1;
+      }
+    }
 
     relic_entry.state.mints += 1;
 
@@ -1206,8 +1225,26 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
       return Ok(Err(RelicError::RelicNotFound(id)));
     };
 
+    // Enforce max_per_block for multi-mint.
+    if let Some(terms) = relic_entry.mint_terms {
+      if let Some(max_per_block) = terms.max_per_block {
+        let current = self.mints_in_block.get(&id).cloned().unwrap_or(0);
+        if (current as u32).saturating_add(num_mints) > max_per_block as u32 {
+          return Ok(Err(RelicError::MintBlockCapExceeded(max_per_block)));
+        }
+      }
+    }
+
     let mint_results = relic_entry.multi_mintable(base_balance, num_mints, base_limit)?;
     relic_entry.state.mints += mint_results.len() as u128;
+
+    // Update per-block mint counter.
+    if let Some(terms) = relic_entry.mint_terms {
+      if let Some(_) = terms.max_per_block {
+        let counter = self.mints_in_block.entry(id).or_insert(0);
+        *counter = counter.saturating_add(mint_results.len() as u16);
+      }
+    }
 
     if let Some(terms) = relic_entry.mint_terms {
       if relic_entry.state.mints == terms.cap.unwrap_or_default() {

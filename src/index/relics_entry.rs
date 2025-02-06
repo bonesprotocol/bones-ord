@@ -317,6 +317,7 @@ impl RelicEntry {
 type MintTermsValue = (
   Option<u128>, // amount
   Option<u128>, // cap
+  Option<u16>, // max per block
   Option<u32>, // max per tx
   Option<u128>, // stored price:
   //   - Some(n) with n != 0 represents PriceModel::Fixed(n)
@@ -335,6 +336,7 @@ impl Entry for MintTerms {
   fn load((
       amount,
       cap,
+      max_per_block,
       max_per_tx,
       price_type,
       price_fixed_or_a,
@@ -358,6 +360,7 @@ impl Entry for MintTerms {
     Self {
       amount,
       cap,
+      max_per_block,
       max_per_tx,
       price,
       seed,
@@ -375,6 +378,7 @@ impl Entry for MintTerms {
     (
       self.amount,
       self.cap,
+      self.max_per_block,
       self.max_per_tx,
       price_type,
       price_fixed_or_a,
