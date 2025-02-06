@@ -510,6 +510,7 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
       state: RelicState {
         burned: 0,
         mints: 0,
+        unmints: 0,
         subsidy: subsidy.unwrap_or_default(),
         subsidy_remaining: subsidy.unwrap_or_default(),
         subsidy_locked: false,
@@ -1302,6 +1303,7 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
       return Ok(Err(RelicError::UnmintInsufficientBalance(amount, token_balance)));
     }
     relic_entry.state.mints -= 1;
+    relic_entry.state.unmints += 1;
     self.id_to_entry.insert(&id.store(), relic_entry.store())?;
     self.event_emitter.emit(
       txid,
@@ -1336,6 +1338,7 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
     }
 
     relic_entry.state.mints -= count as u128;
+    relic_entry.state.unmints += count as u128;
     self.id_to_entry.insert(&id.store(), relic_entry.store())?;
     self.event_emitter.emit(
       txid,

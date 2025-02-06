@@ -140,10 +140,10 @@ impl Context {
         cap: Some(3_670_709),
         max_per_block: None,
         max_per_tx: None,
+        max_unmints: None,
         price: None,
         seed: None,
         swap_height: None,
-        unmintable: None,
       }),
       state: RelicState {
         subsidy_locked: true,

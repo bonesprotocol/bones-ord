@@ -13,7 +13,7 @@ pub(super) enum Tag {
   Price = 16,
   Subsidy = 18,
   SwapHeight = 22,
-  Unmintable = 24,
+  MaxUnmints = 24,
   MaxPerBlock = 26,
   MaxPerTx = 28,
   // Mint

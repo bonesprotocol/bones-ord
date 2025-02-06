@@ -101,6 +101,7 @@ impl Keepsake {
         cap: Tag::Cap.take(&mut fields, |[cap]| Some(cap)),
         max_per_block: Tag::MaxPerBlock.take(&mut fields, |[val]| u16::try_from(val).ok()),
         max_per_tx: Tag::MaxPerTx.take(&mut fields, |[val]| u32::try_from(val).ok()),
+        max_unmints: Tag::MaxUnmints.take(&mut fields, |[val]| u32::try_from(val).ok()),
         price: Tag::Price.take(&mut fields, |values: [u128; 1]| {
           Some(PriceModel::Fixed(values[0]))
         }).or_else(|| {
@@ -114,10 +115,6 @@ impl Keepsake {
         }),
         seed: get_non_zero(Tag::Seed, &mut fields),
         swap_height: Tag::SwapHeight.take(&mut fields, |[height]| u64::try_from(height).ok()),
-        unmintable: Tag::Unmintable.take(&mut fields, |[val]| {
-          // interpret 1 => true, 0 => false
-          Some(val != 0)
-        }),
       }),
       turbo: Flag::Turbo.take(&mut flags),
     });

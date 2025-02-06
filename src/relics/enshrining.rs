@@ -73,6 +73,8 @@ pub struct MintTerms {
   pub max_per_block: Option<u16>,
   /// Maximum number of mints allowed in one transaction
   pub max_per_tx: Option<u32>,
+  /// Only if set, tokens can be unminted (until max_unmints reached)
+  pub max_unmints: Option<u32>,
   /// note: must be set, except for RELIC, which does not have a price
   pub price: Option<PriceModel>,
   /// initial supply of quote tokens when the liquidity pool is created
@@ -80,8 +82,6 @@ pub struct MintTerms {
   pub seed: Option<u128>,
   /// minimum block height for swaps
   pub swap_height: Option<u64>,
-  /// If true, minted tokens can be reverted by users.
-  pub unmintable: Option<bool>,
 }
 
 impl MintTerms {

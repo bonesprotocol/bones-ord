@@ -80,20 +80,22 @@ impl Entry for RelicOwner {
 pub struct RelicState {
   pub burned: u128,
   pub mints: u128,
+  pub unmints: u128,
   pub subsidy: u128,
   pub subsidy_remaining: u128,
   pub subsidy_locked: bool,
 }
 
-pub type RelicStateValue = (u128, u128, u128, u128, bool);
+pub type RelicStateValue = (u128, u128, u128, u128, u128, bool);
 
 impl Entry for RelicState {
   type Value = RelicStateValue;
 
-  fn load((burned, mints, subsidy, subsidy_remaining, subsidy_locked): Self::Value) -> Self {
+  fn load((burned, mints, unmints, subsidy, subsidy_remaining, subsidy_locked): Self::Value) -> Self {
     Self {
       burned,
       mints,
+      unmints,
       subsidy,
       subsidy_remaining,
       subsidy_locked,
@@ -104,6 +106,7 @@ impl Entry for RelicState {
     (
       self.burned,
       self.mints,
+      self.unmints,
       self.subsidy,
       self.subsidy_remaining,
       self.subsidy_locked,
@@ -150,15 +153,20 @@ impl RelicEntry {
   }
 
   pub fn unmintable(&self) -> Result<(u128, u128), RelicError> {
+    let terms = self.mint_terms.as_ref().ok_or(RelicError::Unmintable)?;
+    let max_unmints = terms.max_unmints.ok_or(RelicError::UnmintNotAllowed)? as u128;
+
     if self.state.mints == 0 {
       return Err(RelicError::NoMintsToUnmint);
     }
-    let cap = self.mint_terms.as_ref().and_then(|terms| terms.cap).unwrap_or(0);
+    if self.state.unmints >= max_unmints {
+      return Err(RelicError::UnmintNotAllowed);
+    }
+    let cap = terms.cap.unwrap_or(0);
     if cap != 0 && self.state.mints == cap {
       return Err(RelicError::UnmintNotAllowed);
     }
     let mint_index = self.state.mints - 1;
-    let terms = self.mint_terms.as_ref().ok_or(RelicError::Unmintable)?;
     let amount = terms.amount.unwrap_or_default();
     let price = match terms.price {
       Some(PriceModel::Fixed(fixed)) => fixed,
@@ -208,14 +216,18 @@ impl RelicEntry {
   }
 
   pub fn multi_unmintable(&self, count: u32) -> Result<Vec<(u128, u128)>, RelicError> {
+    let terms = self.mint_terms.as_ref().ok_or(RelicError::Unmintable)?;
+    let max_unmints = terms.max_unmints.ok_or(RelicError::UnmintNotAllowed)? as u128;
     if self.state.mints < count as u128 {
       return Err(RelicError::NoMintsToUnmint);
     }
-    let cap = self.mint_terms.as_ref().and_then(|terms| terms.cap).unwrap_or(0);
+    let cap = terms.cap.unwrap_or(0);
     if cap != 0 && self.state.mints == cap {
       return Err(RelicError::UnmintNotAllowed);
     }
-    let terms = self.mint_terms.as_ref().ok_or(RelicError::Unmintable)?;
+    if self.state.unmints + count as u128 > max_unmints {
+      return Err(RelicError::UnmintNotAllowed);
+    }
     let mut results = Vec::with_capacity(count as usize);
     for i in 0..count {
       let mint_index = self.state.mints - 1 - i as u128;
@@ -319,6 +331,7 @@ type MintTermsValue = (
   Option<u128>, // cap
   Option<u16>, // max per block
   Option<u32>, // max per tx
+  Option<u32>, // max unmints
   Option<u128>, // stored price:
   //   - Some(n) with n != 0 represents PriceModel::Fixed(n)
   //   - Some(0) indicates formula pricing (with a, b, c below)
@@ -327,7 +340,6 @@ type MintTermsValue = (
   Option<u128>, // formula_c (for formula pricing)
   Option<u128>, // seed
   Option<u64>,  // swap_height
-  Option<bool>, // unmintable
 );
 
 impl Entry for MintTerms {
@@ -338,13 +350,13 @@ impl Entry for MintTerms {
       cap,
       max_per_block,
       max_per_tx,
+      max_unmints,
       price_type,
       price_fixed_or_a,
       formula_b,
       formula_c,
       seed,
       swap_height,
-      unmintable,
     ): Self::Value) -> Self {
     let price = match price_type {
       Some(1) => price_fixed_or_a.map(|p| PriceModel::Fixed(p)),
@@ -362,10 +374,10 @@ impl Entry for MintTerms {
       cap,
       max_per_block,
       max_per_tx,
+      max_unmints,
       price,
       seed,
       swap_height,
-      unmintable,
     }
   }
 
@@ -380,13 +392,13 @@ impl Entry for MintTerms {
       self.cap,
       self.max_per_block,
       self.max_per_tx,
+      self.max_unmints,
       price_type,
       price_fixed_or_a,
       formula_b,
       formula_c,
       self.seed,
       self.swap_height,
-      self.unmintable,
     )
   }
 }
@@ -543,14 +555,17 @@ mod tests {
       mint_terms: Some(MintTerms {
         amount: Some(4),
         cap: Some(1),
+        max_unmints: None,
+        max_per_block: None,
+        max_per_tx: None,
         price: Some(8),
         seed: Some(22),
         swap_height: Some(400_000),
-        unmintable: false,
       }),
       state: RelicState {
         burned: 33,
         mints: 44,
+        unmints: 17,
         subsidy: 55,
         subsidy_remaining: 66,
         subsidy_locked: true,
@@ -575,7 +590,7 @@ mod tests {
       Some('a'),
       Some(123),
       Some((Some(4), Some(1), Some(8), Some(22), Some(400_000))),
-      (33, 44, 55, 66, true),
+      (33, 44, 17, 55, 66, true),
       Some((321, 123, 13)),
       10,
       true,
