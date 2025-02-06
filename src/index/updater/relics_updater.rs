@@ -103,6 +103,60 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
         None
       };
 
+      if let Some(id) = keepsake.mint {
+        let id = if id == RelicId::default() { enshrined_relic } else { Some(id) };
+        if let Some(id) = id {
+          match self.mint(txid, id, balances.get(RELIC_ID))? {
+            Ok((amount, price)) => {
+              balances.remove(RELIC_ID, price);
+              balances.add(id, amount);
+            }
+            Err(error) => {
+              eprintln!("Mint error: {error}");
+              self.event_emitter.emit(
+                txid,
+                EventInfo::RelicError {
+                  operation: RelicOperation::Mint,
+                  error,
+                },
+              )?;
+            }
+          }
+        }
+      }
+
+      if let Some(id) = keepsake.unmint.filter(|id| *id != RelicId::default()) {
+        if enshrined_relic.is_some() {
+          eprintln!("Unmint error: Unmint not allowed in transaction with enshrined relic");
+          self.event_emitter.emit(
+            txid,
+            EventInfo::RelicError {
+              operation: RelicOperation::Unmint,
+              error: RelicError::UnmintNotAllowed,
+            },
+          )?;
+        } else {
+          // Pass the balance of the minted token (id) instead of the base token.
+          match self.unmint(txid, id, balances.get(id))? {
+            Ok((amount, price)) => {
+              // Remove the minted token from the caller’s balance and refund base tokens.
+              balances.remove(id, amount);
+              balances.add(RELIC_ID, price);
+            }
+            Err(error) => {
+              eprintln!("Unmint error: {error}");
+              self.event_emitter.emit(
+                txid,
+                EventInfo::RelicError {
+                  operation: RelicOperation::Unmint,
+                  error,
+                },
+              )?;
+            }
+          }
+        }
+      }
+
       if let Some(swap) = &keepsake.swap {
         let input = swap.input.unwrap_or(RELIC_ID);
         let output = swap.output.unwrap_or(RELIC_ID);
@@ -135,58 +189,88 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
         }
       }
 
-      if let Some(id) = keepsake.mint {
-        let id = if id == RelicId::default() {
-          // mint the Relic that was just enshrined if mint id is zero
+      if let Some(multi) = keepsake.multi_mint {
+        // Use enshrined relic if multi.relic is default
+        let id = if multi.relic == RelicId::default() {
           enshrined_relic
         } else {
-          Some(id)
+          Some(multi.relic)
         };
         if let Some(id) = id {
-          match self.mint(txid, id, balances.get(RELIC_ID))? {
-            Ok((amount, price)) => {
-              balances.remove(RELIC_ID, price);
-              balances.add(id, amount);
-            }
-            Err(error) => {
-              eprintln!("Mint error: {error}");
-              self.event_emitter.emit(
-                txid,
-                EventInfo::RelicError {
-                  operation: RelicOperation::Mint,
-                  error,
-                },
-              )?;
-            }
-          }
-        }
-      }
-
-      if let Some(id) = keepsake.unmint.filter(|id| *id != RelicId::default()) {
-        if enshrined_relic.is_some() {
-          eprintln!("Unmint error: Unmint not allowed in transaction with enshrined relic");
-          self.event_emitter.emit(
-            txid,
-            EventInfo::RelicError {
-              operation: RelicOperation::Unmint,
-              error: RelicError::UnmintNotAllowed,
-            },
-          )?;
-        } else {
-          match self.unmint(txid, id, balances.get(RELIC_ID))? {
-            Ok((amount, price)) => {
-              balances.remove(RELIC_ID, price);
-              balances.add(id, amount);
-            }
-            Err(error) => {
-              eprintln!("Unmint error: {error}");
+          if multi.is_unmint {
+            // Unmint not allowed if an enshrined relic is present
+            if enshrined_relic.is_some() {
+              eprintln!("Unmint error: Unmint not allowed in transaction with enshrined relic");
               self.event_emitter.emit(
                 txid,
                 EventInfo::RelicError {
                   operation: RelicOperation::Unmint,
-                  error,
+                  error: RelicError::UnmintNotAllowed,
                 },
               )?;
+            } else {
+              // Call multi_unmint for multiple unmint operations
+              match self.multi_unmint(txid, id, balances.get(id), multi.count, multi.base_limit)? {
+                Ok(lots) => {
+                  let (total_relic, total_base) = lots.iter().fold(
+                    (0u128, 0u128),
+                    |(acc_r, acc_b), (Lot(amount), Lot(price))| (acc_r + amount, acc_b + price)
+                  );
+                  // Remove the unminted tokens from `id`'s balance and refund base tokens to RELIC balance.
+                  balances.remove(id, Lot(total_relic));
+                  balances.add(RELIC_ID, Lot(total_base));
+                  self.event_emitter.emit(
+                    txid,
+                    EventInfo::RelicMultiMinted {
+                      relic_id: id,
+                      amount: total_relic,
+                      num_mints: multi.count,
+                      base_limit: multi.base_limit,
+                    },
+                  )?;
+                }
+                Err(error) => {
+                  eprintln!("MultiUnmint error: {error}");
+                  self.event_emitter.emit(
+                    txid,
+                    EventInfo::RelicError {
+                      operation: RelicOperation::MultiUnmint,
+                      error,
+                    },
+                  )?;
+                }
+              }
+            }
+          } else {
+            // Mint operation
+            match self.multi_mint(txid, id, balances.get(RELIC_ID), multi.count, multi.base_limit)? {
+              Ok(lots) => {
+                let (total_relic, total_base) = lots.iter().fold(
+                  (0u128, 0u128),
+                  |(acc_r, acc_b), (Lot(amount), Lot(price))| (acc_r + amount, acc_b + price)
+                );
+                balances.remove(RELIC_ID, Lot(total_base));
+                balances.add(id, Lot(total_relic));
+                self.event_emitter.emit(
+                  txid,
+                  EventInfo::RelicMultiMinted {
+                    relic_id: id,
+                    amount: total_relic,
+                    num_mints: multi.count,
+                    base_limit: multi.base_limit,
+                  },
+                )?;
+              }
+              Err(error) => {
+                eprintln!("MultiMint error: {error}");
+                self.event_emitter.emit(
+                  txid,
+                  EventInfo::RelicError {
+                    operation: RelicOperation::MultiMint,
+                    error,
+                  },
+                )?;
+              }
             }
           }
         }
@@ -1109,58 +1193,119 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
     Ok(Ok((Lot(amount), Lot(price))))
   }
 
+  fn multi_mint(
+    &mut self,
+    txid: Txid,
+    id: RelicId,
+    base_balance: u128,
+    num_mints: u32,
+    base_limit: u128,
+  ) -> Result<Result<Vec<(Lot, Lot)>, RelicError>> {
+    assert_ne!(id, RELIC_ID, "the parser produced an invalid Mint for the base token");
+    let Some(mut relic_entry) = self.load_relic_entry(id)? else {
+      return Ok(Err(RelicError::RelicNotFound(id)));
+    };
+
+    let mint_results = relic_entry.multi_mintable(base_balance, num_mints, base_limit)?;
+    relic_entry.state.mints += mint_results.len() as u128;
+
+    if let Some(terms) = relic_entry.mint_terms {
+      if relic_entry.state.mints == terms.cap.unwrap_or_default() {
+        assert_eq!(relic_entry.pool, None, "pool already exists");
+        let base_supply = relic_entry.locked_base_supply();
+        let quote_supply = terms.seed.unwrap_or_default();
+        if base_supply == 0 || quote_supply == 0 {
+          eprintln!(
+            "unable to create pool for Relic {}: both token supplies must be non-zero, but got base/quote supply of {}/{}",
+            relic_entry.spaced_relic, base_supply, quote_supply
+          );
+        } else {
+          relic_entry.pool = Some(Pool {
+            base_supply,
+            quote_supply,
+            fee_percentage: 1,
+          });
+        }
+      }
+    }
+
+    let lots: Vec<(Lot, Lot)> = mint_results
+      .iter()
+      .map(|&(amount, price)| (Lot(amount), Lot(price)))
+      .collect();
+
+    let amount = mint_results.get(0).map(|(a, _)| *a).unwrap_or_default();
+    self.event_emitter.emit(
+      txid,
+      EventInfo::RelicMultiMinted {
+        relic_id: id,
+        amount,
+        num_mints,
+        base_limit,
+      },
+    )?;
+
+    self.id_to_entry.insert(&id.store(), relic_entry.store())?;
+    Ok(Ok(lots))
+  }
+
   fn unmint(
     &mut self,
     txid: Txid,
     id: RelicId,
-    _base_balance: u128,
+    token_balance: u128, // now represents the balance of the token to be unminted
   ) -> Result<Result<(Lot, Lot), RelicError>> {
-    // Unminting is only allowed for non-base tokens.
     assert_ne!(id, RELIC_ID, "unmint for base token is not allowed");
-
-    let mut relic_entry = self
-      .load_relic_entry(id)?
-      .ok_or_else(|| anyhow::anyhow!(RelicError::RelicNotFound(id)))?;
-
-    // There must be at least one mint to revert.
-    if relic_entry.state.mints == 0 {
-      return Ok(Err(RelicError::NoMintsToUnmint));
-    }
-
-    // If the liquidity pool is already created (mint cap reached), unminting is not allowed.
-    let cap = relic_entry.mint_terms.as_ref().and_then(|terms| terms.cap).unwrap_or(0);
-    if cap != 0 && relic_entry.state.mints == cap {
-      return Ok(Err(RelicError::UnmintNotAllowed));
-    }
-
-    // The mint index to be reverted is the last one.
-    let mint_index = relic_entry.state.mints - 1;
-    let terms = relic_entry
-      .mint_terms
-      .ok_or_else(|| anyhow::anyhow!(RelicError::Unmintable))?;
-    let amount = terms.amount.unwrap_or_default();
-
-    // Compute the price paid for the mint.
-    let price = match terms.price {
-      Some(PriceModel::Fixed(fixed)) => fixed,
-      Some(PriceModel::Formula { .. }) => {
-        terms
-          .compute_price(mint_index)
-          .ok_or_else(|| anyhow::anyhow!(RelicError::PriceComputationError))?
-      }
-      None => return Ok(Err(RelicError::PriceComputationError)),
+    let Some(mut relic_entry) = self.load_relic_entry(id)? else {
+      return Ok(Err(RelicError::RelicNotFound(id)));
     };
-
-    // Reverse the mint by decrementing the minted counter.
-    relic_entry.state.mints = mint_index;
+    let (amount, price) = relic_entry.unmintable()?;
+    // Ensure the caller has enough of the minted token to be unminted.
+    if token_balance < amount {
+      return Ok(Err(RelicError::UnmintInsufficientBalance(amount, token_balance)));
+    }
+    relic_entry.state.mints -= 1;
     self.id_to_entry.insert(&id.store(), relic_entry.store())?;
-
     self.event_emitter.emit(
       txid,
       EventInfo::RelicUnminted { relic_id: id, amount },
     )?;
-
     Ok(Ok((Lot(amount), Lot(price))))
+  }
+
+  fn multi_unmint(
+    &mut self,
+    txid: Txid,
+    id: RelicId,
+    token_balance: u128,
+    count: u32,
+    base_limit: u128, // minimum base tokens the user expects to receive
+  ) -> Result<Result<Vec<(Lot, Lot)>, RelicError>> {
+    assert_ne!(id, RELIC_ID, "unmint for base token is not allowed");
+    let Some(mut relic_entry) = self.load_relic_entry(id)? else {
+      return Ok(Err(RelicError::RelicNotFound(id)));
+    };
+
+    let results = relic_entry.multi_unmintable(count)?;
+    // Total minted tokens to be removed.
+    let total_minted: u128 = results.iter().map(|(a, _)| *a).sum();
+    if token_balance < total_minted {
+      return Ok(Err(RelicError::UnmintInsufficientBalance(total_minted, token_balance)));
+    }
+    // Total base tokens to be refunded.
+    let total_refund: u128 = results.iter().map(|(_, price)| *price).sum();
+    if total_refund < base_limit {
+      return Ok(Err(RelicError::MintBaseLimitExceeded(base_limit, total_refund)));
+    }
+
+    relic_entry.state.mints -= count as u128;
+    self.id_to_entry.insert(&id.store(), relic_entry.store())?;
+    self.event_emitter.emit(
+      txid,
+      EventInfo::RelicUnminted { relic_id: id, amount: total_minted },
+    )?;
+    let lots = results.into_iter().map(|(a, p)| (Lot(a), Lot(p))).collect();
+    Ok(Ok(lots))
   }
 
   fn claim(&mut self, txid: Txid, owner: RelicOwner) -> Result<Option<Lot>> {

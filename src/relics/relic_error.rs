@@ -11,6 +11,9 @@ pub enum RelicError {
   MintInsufficientBalance(u128),
   UnmintNotAllowed,
   NoMintsToUnmint,
+  MaxMintPerTxExceeded(u32),
+  MintBaseLimitExceeded(u128, u128),
+  UnmintInsufficientBalance(u128, u128),
   SwapNotAvailable,
   SwapHeightNotReached(u64),
   SwapFailed(PoolError),
@@ -48,7 +51,16 @@ impl Display for RelicError {
       }
       RelicError::UnmintNotAllowed => write!(f, "unmint not allowed (here)"),
       RelicError::NoMintsToUnmint => write!(f, "no mints to unmint"),
-      RelicError::PriceComputationError => write!(f, "cannot compute mint price"),
+      RelicError::MaxMintPerTxExceeded(max) => {
+        write!(f, "maximum mints per transaction exceeded: {max}")
+      }
+      RelicError::MintBaseLimitExceeded(limit, price) => {
+        write!(f, "mint base limit exceeded: limit {limit}, price {price}")
+      }
+      RelicError::UnmintInsufficientBalance(required, available) => {
+        write!(f, "insufficient minted token balance for unmint: required {required}, available {available}")
+      }
+      RelicError::PriceComputationError => write!(f, "price computation error"),
       RelicError::SwapNotAvailable => write!(f, "liquidity pool for swap not available (yet)"),
       RelicError::SwapHeightNotReached(swap_height) => {
         write!(
@@ -100,6 +112,8 @@ impl Display for RelicError {
     }
   }
 }
+
+impl std::error::Error for RelicError {}
 
 #[cfg(test)]
 mod tests {

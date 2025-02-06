@@ -12,6 +12,18 @@ pub struct Enshrining {
   pub turbo: bool,
 }
 
+#[derive(Default, Serialize, Deserialize, Debug, PartialEq, Copy, Clone, Eq)]
+pub struct MultiMint {
+  /// Number of mints to perform (always positive).
+  pub count: u32,
+  /// When minting, the maximum base token to spend; when unminting, the minimum base token to receive.
+  pub base_limit: u128,
+  /// True if this operation is an unmint (i.e. a revert), false for a mint.
+  pub is_unmint: bool,
+  /// The Relic ID to mint or unmint.
+  pub relic: RelicId,
+}
+
 #[derive(Serialize, Deserialize, Debug, PartialEq, Copy, Clone, Eq)]
 #[serde(untagged)]
 pub enum PriceModel {
@@ -31,6 +43,21 @@ impl PriceModel {
       }
     }
   }
+
+  /// Computes the total price for `count` mints starting at mint index `start`.
+  pub fn compute_total_price(&self, start: u128, count: u32) -> Option<u128> {
+    match *self {
+      PriceModel::Fixed(price) => price.checked_mul(count as u128),
+      PriceModel::Formula { .. } => {
+        let mut total = 0u128;
+        for i in 0..count {
+          let x = start.checked_add(i as u128)?;
+          total = total.checked_add(self.compute_price(x)?)?;
+        }
+        Some(total)
+      }
+    }
+  }
 }
 
 /// Allows minting of tokens for a fixed price until the total supply was minted.
@@ -42,6 +69,8 @@ pub struct MintTerms {
   pub amount: Option<u128>,
   /// maximum number of mints allowed
   pub cap: Option<u128>,
+  /// Maximum number of mints allowed in one transaction
+  pub max_per_tx: Option<u32>,
   /// note: must be set, except for RELIC, which does not have a price
   pub price: Option<PriceModel>,
   /// initial supply of quote tokens when the liquidity pool is created
@@ -57,6 +86,11 @@ impl MintTerms {
   // Compute price using the current mint count (x)
   pub fn compute_price(&self, x: u128) -> Option<u128> {
     self.price.and_then(|p| p.compute_price(x))
+  }
+
+  /// Computes the total price for `count` mints starting at mint index `start`.
+  pub fn compute_total_price(&self, start: u128, count: u32) -> Option<u128> {
+    self.price.and_then(|p| p.compute_total_price(start, count))
   }
 }
 

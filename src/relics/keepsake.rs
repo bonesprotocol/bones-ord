@@ -1,5 +1,5 @@
 use bitcoin::blockdata::constants::MAX_SCRIPT_ELEMENT_SIZE;
-use {super::*, enshrining::PriceModel, flag::Flag, message::Message, tag::Tag};
+use {super::*, enshrining::{MultiMint, PriceModel}, flag::Flag, message::Message, tag::Tag};
 
 mod flag;
 mod message;
@@ -22,6 +22,8 @@ pub struct Keepsake {
   pub enshrining: Option<Enshrining>,
   /// mint given Relic
   pub mint: Option<RelicId>,
+  /// multi mint (also unmint) given Relic
+  pub multi_mint: Option<MultiMint>,
   // unmint
   pub unmint: Option<RelicId>,
   /// execute token swap
@@ -97,6 +99,7 @@ impl Keepsake {
       mint_terms: Flag::MintTerms.take(&mut flags).then(|| MintTerms {
         amount: Tag::Amount.take(&mut fields, |[amount]| Some(amount)),
         cap: Tag::Cap.take(&mut fields, |[cap]| Some(cap)),
+        max_per_tx: Tag::MaxPerTx.take(&mut fields, |[val]| u32::try_from(val).ok()),
         price: Tag::Price.take(&mut fields, |values: [u128; 1]| {
           Some(PriceModel::Fixed(values[0]))
         }).or_else(|| {
@@ -120,6 +123,23 @@ impl Keepsake {
 
     let mint = get_relic_id(Tag::Mint, &mut fields);
     let unmint = get_relic_id(Tag::Unmint, &mut fields);
+
+    let multi_mint = if let Some(is_unmint) = if Flag::MultiMint.take(&mut flags) {
+      Some(false)
+    } else if Flag::MultiUnmint.take(&mut flags) {
+      Some(true)
+    } else {
+      None
+    } {
+      let count = Tag::MultiMintCount.take(&mut fields, |[val]| u32::try_from(val).ok())?;
+      let base_limit = Tag::MultiMintBaseLimit.take(&mut fields, |[val]| Some(val))?;
+      let relic = Tag::MultiMintRelic.take(&mut fields, |[block, tx]| {
+        RelicId::new(block.try_into().ok()?, tx.try_into().ok()?)
+      })?;
+      Some(MultiMint { count, base_limit, relic, is_unmint })
+    } else {
+      None
+    };
 
     let swap = Flag::Swap.take(&mut flags).then(|| Swap {
       input: get_relic_id(Tag::SwapInput, &mut fields),
@@ -168,6 +188,20 @@ impl Keepsake {
           if cap == 0 {
             return false;
           }
+          // Check that the total mint supply (cap × amount) does not overflow
+          if let Some(amount) = terms.amount {
+            if cap.checked_mul(amount).is_none() {
+              return false;
+            }
+          }
+          // If max_per_tx is set, check that (max_per_tx as u128) × amount doesn't overflow.
+          if let Some(max_tx) = terms.max_per_tx {
+            if let Some(amount) = terms.amount {
+              if (max_tx as u128).checked_mul(amount).is_none() {
+                return false;
+              }
+            }
+          }
           match terms.price {
             Some(PriceModel::Fixed(price)) => {
               // For fixed pricing, check multiplication doesn't overflow.
@@ -202,6 +236,11 @@ impl Keepsake {
       flaw.get_or_insert(RelicFlaw::InvalidBaseTokenUnmint);
     }
 
+    // Additionally, base token must not be multi minted.
+    if multi_mint.as_ref().map(|m| m.relic == RELIC_ID).unwrap_or(false) {
+      flaw.get_or_insert(RelicFlaw::InvalidBaseTokenMint);
+    }
+
     // make sure to not swap from and to the same token
     if swap
       .map(|swap| swap.input.unwrap_or(RELIC_ID) == swap.output.unwrap_or(RELIC_ID))
@@ -229,6 +268,7 @@ impl Keepsake {
       sealing,
       enshrining,
       mint,
+      multi_mint,
       unmint,
       swap,
       summoning,
@@ -262,6 +302,7 @@ impl Keepsake {
       if let Some(terms) = enshrining.mint_terms {
         Flag::MintTerms.set(&mut flags);
         Tag::Amount.encode_option(terms.amount, &mut payload);
+        Tag::MaxPerTx.encode_option(terms.max_per_tx, &mut payload);
         Tag::Cap.encode_option(terms.cap, &mut payload);
         if let Some(price_model) = terms.price {
           match price_model {
@@ -282,6 +323,20 @@ impl Keepsake {
 
     if let Some(RelicId { block, tx }) = self.mint {
       Tag::Mint.encode([block.into(), tx.into()], &mut payload);
+    }
+
+    if let Some(multi) = self.multi_mint {
+      if multi.is_unmint {
+        Flag::MultiUnmint.set(&mut flags);
+      } else {
+        Flag::MultiMint.set(&mut flags);
+      }
+      Tag::MultiMintCount.encode([multi.count as u128], &mut payload);
+      Tag::MultiMintBaseLimit.encode([multi.base_limit], &mut payload);
+      Tag::MultiMintRelic.encode(
+        [multi.relic.block.into(), multi.relic.tx.into()],
+        &mut payload,
+      );
     }
 
     if let Some(swap) = &self.swap {

@@ -149,6 +149,89 @@ impl RelicEntry {
     Ok((terms.amount.unwrap_or_default(), price))
   }
 
+  pub fn unmintable(&self) -> Result<(u128, u128), RelicError> {
+    if self.state.mints == 0 {
+      return Err(RelicError::NoMintsToUnmint);
+    }
+    let cap = self.mint_terms.as_ref().and_then(|terms| terms.cap).unwrap_or(0);
+    if cap != 0 && self.state.mints == cap {
+      return Err(RelicError::UnmintNotAllowed);
+    }
+    let mint_index = self.state.mints - 1;
+    let terms = self.mint_terms.as_ref().ok_or(RelicError::Unmintable)?;
+    let amount = terms.amount.unwrap_or_default();
+    let price = match terms.price {
+      Some(PriceModel::Fixed(fixed)) => fixed,
+      Some(PriceModel::Formula { .. }) => {
+        terms.compute_price(mint_index).ok_or(RelicError::PriceComputationError)?
+      }
+      None => return Err(RelicError::PriceComputationError),
+    };
+    Ok((amount, price))
+  }
+
+  pub fn multi_mintable(
+    &self,
+    base_balance: u128,
+    num_mints: u32,
+    base_limit: u128,
+  ) -> Result<Vec<(u128, u128)>, RelicError> {
+    let terms = self.mint_terms.ok_or(RelicError::Unmintable)?;
+    if let Some(max_tx) = terms.max_per_tx {
+      if num_mints > max_tx {
+        return Err(RelicError::MaxMintPerTxExceeded(max_tx));
+      }
+    }
+    let cap = terms.cap.unwrap_or_default();
+    let current_mints = self.state.mints;
+    if current_mints + num_mints as u128 > cap {
+      return Err(RelicError::MintCap(cap));
+    }
+    let total_price = terms
+      .compute_total_price(current_mints, num_mints)
+      .ok_or(RelicError::PriceComputationError)?;
+    if base_limit < total_price {
+      return Err(RelicError::MintBaseLimitExceeded(base_limit, total_price));
+    }
+    if base_balance < total_price {
+      return Err(RelicError::MintInsufficientBalance(total_price));
+    }
+    let mut results = Vec::with_capacity(num_mints as usize);
+    for x in current_mints..current_mints + num_mints as u128 {
+      let price = terms
+        .compute_price(x)
+        .ok_or(RelicError::PriceComputationError)?;
+      let amount = terms.amount.unwrap_or_default();
+      results.push((amount, price));
+    }
+    Ok(results)
+  }
+
+  pub fn multi_unmintable(&self, count: u32) -> Result<Vec<(u128, u128)>, RelicError> {
+    if self.state.mints < count as u128 {
+      return Err(RelicError::NoMintsToUnmint);
+    }
+    let cap = self.mint_terms.as_ref().and_then(|terms| terms.cap).unwrap_or(0);
+    if cap != 0 && self.state.mints == cap {
+      return Err(RelicError::UnmintNotAllowed);
+    }
+    let terms = self.mint_terms.as_ref().ok_or(RelicError::Unmintable)?;
+    let mut results = Vec::with_capacity(count as usize);
+    for i in 0..count {
+      let mint_index = self.state.mints - 1 - i as u128;
+      let price = match terms.price {
+        Some(PriceModel::Fixed(fixed)) => fixed,
+        Some(PriceModel::Formula { .. }) => {
+          terms.compute_price(mint_index).ok_or(RelicError::PriceComputationError)?
+        }
+        None => return Err(RelicError::PriceComputationError),
+      };
+      let amount = terms.amount.unwrap_or_default();
+      results.push((amount, price));
+    }
+    Ok(results)
+  }
+
   pub fn swap(
     &self,
     swap: PoolSwap,
@@ -234,6 +317,7 @@ impl RelicEntry {
 type MintTermsValue = (
   Option<u128>, // amount
   Option<u128>, // cap
+  Option<u32>, // max per tx
   Option<u128>, // stored price:
   //   - Some(n) with n != 0 represents PriceModel::Fixed(n)
   //   - Some(0) indicates formula pricing (with a, b, c below)
@@ -251,6 +335,7 @@ impl Entry for MintTerms {
   fn load((
       amount,
       cap,
+      max_per_tx,
       price_type,
       price_fixed_or_a,
       formula_b,
@@ -273,6 +358,7 @@ impl Entry for MintTerms {
     Self {
       amount,
       cap,
+      max_per_tx,
       price,
       seed,
       swap_height,
@@ -289,6 +375,7 @@ impl Entry for MintTerms {
     (
       self.amount,
       self.cap,
+      self.max_per_tx,
       price_type,
       price_fixed_or_a,
       formula_b,

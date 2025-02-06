@@ -39,6 +39,14 @@ pub enum EventInfo {
     relic_id: RelicId,
     amount: u128,
   },
+  #[serde(rename = "BoneMultiMinted")]
+  RelicMultiMinted {
+    #[serde(rename = "bone_id")]
+    relic_id: RelicId,
+    amount: u128,
+    num_mints: u32,
+    base_limit: u128,
+  },
   #[serde(rename = "BoneUnminted")]
   RelicUnminted {
     #[serde(rename = "bone_id")]
@@ -109,7 +117,9 @@ pub enum RelicOperation {
   Seal,
   Enshrine,
   Mint,
+  MultiMint,
   Unmint,
+  MultiUnmint,
   Swap,
   Summon,
   Encase,

@@ -10,6 +10,8 @@ pub(super) enum Flag {
   LockSubsidy = 8,
   Release = 9,
   Turbo = 10,
+  MultiMint = 11,
+  MultiUnmint = 12,
   #[allow(unused)]
   Cenotaph = 127,
 }
