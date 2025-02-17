@@ -126,6 +126,7 @@ impl Context {
     RelicEntry {
       block: 1,
       enshrining: Txid::all_zeros(),
+      fee: 100, // 1%
       number: 0,
       spaced_relic: SpacedRelic {
         relic: Relic(45660),
@@ -153,7 +154,6 @@ impl Context {
       },
       pool: None,
       timestamp: 0,
-      turbo: true,
     }
   }
 

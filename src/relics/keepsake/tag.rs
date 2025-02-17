@@ -17,6 +17,7 @@ pub(super) enum Tag {
   BlockCap = 26,
   TxCap = 28,
   Manifest = 100,
+  Fee = 38,
   // Mint
   Mint = 20,
   Unmint = 80,

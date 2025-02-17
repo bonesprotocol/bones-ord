@@ -388,6 +388,7 @@ impl Index {
               RelicEntry {
                 block: id.block,
                 enshrining,
+                fee: 100, // 1%
                 number: 0,
                 spaced_relic: SpacedRelic { relic, spacers: 0 },
                 symbol: Some('🦴'),
@@ -412,7 +413,6 @@ impl Index {
                 },
                 pool: None,
                 timestamp: 0,
-                turbo: true,
               }
               .store(),
             )?;

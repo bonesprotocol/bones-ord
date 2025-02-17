@@ -8,6 +8,7 @@ use crate::relics::{MintTerms, Pool, PriceModel, SpacedRelic};
 pub struct RelicEntryHtml {
   pub block: u64,
   pub enshrining: Txid,
+  pub fee: u16,
   pub number: u64,
   #[serde(rename = "spaced_bone")]
   pub spaced_relic: SpacedRelic,
@@ -16,7 +17,6 @@ pub struct RelicEntryHtml {
   pub state: RelicState,
   pub pool: Option<Pool>,
   pub timestamp: u64,
-  pub turbo: bool,
 }
 
 impl RelicEntryHtml {
@@ -51,6 +51,7 @@ impl From<RelicEntry> for RelicEntryHtml {
     RelicEntryHtml {
       block: entry.block,
       enshrining: entry.enshrining,
+      fee: entry.fee,
       number: entry.number,
       spaced_relic: entry.spaced_relic,
       symbol: entry.symbol,
@@ -58,7 +59,6 @@ impl From<RelicEntry> for RelicEntryHtml {
       state: entry.state,
       pool: entry.pool,
       timestamp: entry.timestamp,
-      turbo: entry.turbo,
     }
   }
 }

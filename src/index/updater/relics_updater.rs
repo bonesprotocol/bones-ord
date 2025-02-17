@@ -501,6 +501,7 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
     owner_sequence_number: u32,
   ) -> Result {
     let Enshrining {
+      fee,
       symbol,
       subsidy,
       boost_terms,
@@ -525,6 +526,7 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
     let entry = RelicEntry {
       block: id.block,
       enshrining: txid,
+      fee: fee.unwrap_or_default(),
       number,
       spaced_relic,
       symbol,
@@ -541,7 +543,6 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
       },
       pool: None,
       timestamp: self.block_time.into(),
-      turbo,
     };
 
     self.id_to_entry.insert(id.store(), entry.store())?;

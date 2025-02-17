@@ -114,6 +114,7 @@ impl Keepsake {
         ultra_rare_multiplier: Tag::UltraRareMultiplier
           .take(&mut fields, |[val]| u16::try_from(val).ok()),
       }),
+      fee: Tag::Fee.take(&mut fields, |[val]| u16::try_from(val).ok()),
       symbol: Tag::Symbol.take(&mut fields, |[symbol]| {
         char::from_u32(u32::try_from(symbol).ok()?)
       }),

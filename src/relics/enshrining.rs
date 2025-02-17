@@ -4,6 +4,8 @@ use super::*;
 pub struct Enshrining {
   /// potential mint boosts
   pub boost_terms: Option<BoostTerms>,
+  /// trading fee in bps (10_000 = 100%)
+  pub fee: Option<u16>,
   /// symbol attached to this Relic
   pub symbol: Option<char>,
   /// supply of quote tokens available for Syndicate rewards

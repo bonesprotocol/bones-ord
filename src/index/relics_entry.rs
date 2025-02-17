@@ -121,6 +121,7 @@ impl Entry for RelicState {
 pub struct RelicEntry {
   pub block: u64,
   pub enshrining: Txid,
+  pub fee: u16,
   pub number: u64,
   pub spaced_relic: SpacedRelic,
   pub symbol: Option<char>,
@@ -130,7 +131,6 @@ pub struct RelicEntry {
   pub state: RelicState,
   pub pool: Option<Pool>,
   pub timestamp: u64,
-  pub turbo: bool,
 }
 
 impl RelicEntry {
@@ -463,6 +463,7 @@ impl Entry for Pool {
 pub type RelicEntryValue = (
   u64,                     // block
   (u128, u128),            // enshrining
+  u16,                     // fee
   u64,                     // number
   SpacedRelicValue,        // spaced_relic
   Option<char>,            // symbol
@@ -472,7 +473,6 @@ pub type RelicEntryValue = (
   RelicStateValue,         // state
   Option<PoolValue>,       // pool
   u64,                     // timestamp
-  bool,                    // turbo
 );
 
 impl Default for RelicEntry {
@@ -480,6 +480,7 @@ impl Default for RelicEntry {
     Self {
       block: 0,
       enshrining: Txid::all_zeros(),
+      fee: 100, // 1%
       number: 0,
       spaced_relic: SpacedRelic::default(),
       symbol: None,
@@ -489,7 +490,6 @@ impl Default for RelicEntry {
       state: RelicState::default(),
       pool: None,
       timestamp: 0,
-      turbo: false,
     }
   }
 }
@@ -501,6 +501,7 @@ impl Entry for RelicEntry {
     (
       block,
       enshrining,
+      fee,
       number,
       spaced_relic,
       symbol,
@@ -510,7 +511,6 @@ impl Entry for RelicEntry {
       state,
       pool,
       timestamp,
-      turbo,
     ): RelicEntryValue,
   ) -> Self {
     Self {
@@ -521,6 +521,7 @@ impl Entry for RelicEntry {
         let bytes: Vec<u8> = [low, high].concat();
         Txid::from_slice(bytes.as_slice()).unwrap_or(Txid::all_zeros())
       },
+      fee,
       number,
       spaced_relic: SpacedRelic::load(spaced_relic),
       symbol,
@@ -530,7 +531,6 @@ impl Entry for RelicEntry {
       state: RelicState::load(state),
       pool: pool.map(Pool::load),
       timestamp,
-      turbo,
     }
   }
 
@@ -558,6 +558,7 @@ impl Entry for RelicEntry {
           ]),
         )
       },
+      self.fee,
       self.number,
       self.spaced_relic.store(),
       self.symbol,
@@ -567,7 +568,6 @@ impl Entry for RelicEntry {
       self.state.store(),
       self.pool.map(|pool| pool.store()),
       self.timestamp,
-      self.turbo,
     )
   }
 }
@@ -620,7 +620,6 @@ mod tests {
         fee_percentage: 13,
       }),
       timestamp: 10,
-      turbo: true,
     };
 
     let value = (
