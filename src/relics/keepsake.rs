@@ -125,7 +125,7 @@ impl Keepsake {
         manifest: Tag::Manifest.take(&mut fields, |[block, tx]| {
           RelicId::new(block.try_into().ok()?, tx.try_into().ok()?)
         }),
-        max_per_tx: Tag::MaxPerTx.take(&mut fields, |[val]| u8::try_from(val).ok()),
+        tx_cap: Tag::TxCap.take(&mut fields, |[val]| u8::try_from(val).ok()),
         max_unmints: Tag::MaxUnmints.take(&mut fields, |[val]| u32::try_from(val).ok()),
         price: Tag::Price
           .take(&mut fields, |values: [u128; 1]| {
@@ -232,8 +232,8 @@ impl Keepsake {
               return false;
             }
           }
-          // If max_per_tx is set, check that (max_per_tx as u128) × amount doesn't overflow.
-          if let Some(max_tx) = terms.max_per_tx {
+          // If tx_cap is set, check that tx_cap × amount doesn't overflow.
+          if let Some(max_tx) = terms.tx_cap {
             if let Some(amount) = terms.amount {
               if (max_tx as u128).checked_mul(amount).is_none() {
                 return false;
@@ -403,7 +403,7 @@ impl Keepsake {
         Flag::MintTerms.set(&mut flags);
         Tag::Amount.encode_option(terms.amount, &mut payload);
         Tag::BlockCap.encode_option(terms.block_cap, &mut payload);
-        Tag::MaxPerTx.encode_option(terms.max_per_tx, &mut payload);
+        Tag::TxCap.encode_option(terms.tx_cap, &mut payload);
         Tag::Cap.encode_option(terms.cap, &mut payload);
         if let Some(price_model) = terms.price {
           match price_model {

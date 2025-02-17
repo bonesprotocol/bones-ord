@@ -15,7 +15,7 @@ pub(super) enum Tag {
   SwapHeight = 22,
   MaxUnmints = 24,
   BlockCap = 26,
-  MaxPerTx = 28,
+  TxCap = 28,
   Manifest = 100,
   // Mint
   Mint = 20,

@@ -76,8 +76,6 @@ pub struct MintTerms {
   pub cap: Option<u128>,
   /// if set, only allow minters from manifest (and parent manifests)
   pub manifest: Option<RelicId>,
-  /// Maximum number of mints allowed in one transaction
-  pub max_per_tx: Option<u8>,
   /// Only if set, tokens can be unminted (until max_unmints reached)
   pub max_unmints: Option<u32>,
   /// note: must be set, except for RELIC, which does not have a price
@@ -87,6 +85,8 @@ pub struct MintTerms {
   pub seed: Option<u128>,
   /// minimum block height for swaps
   pub swap_height: Option<u64>,
+  /// Maximum number of mints allowed in one transaction
+  pub tx_cap: Option<u8>,
 }
 
 /// If set give people the chance to get boosts (multipliers) on their mints

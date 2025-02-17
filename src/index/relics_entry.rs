@@ -189,7 +189,7 @@ impl RelicEntry {
     base_limit: u128,
   ) -> Result<Vec<(u128, u128)>, RelicError> {
     let terms = self.mint_terms.ok_or(RelicError::Unmintable)?;
-    if let Some(max_tx) = terms.max_per_tx {
+    if let Some(max_tx) = terms.tx_cap {
       if num_mints > max_tx {
         return Err(RelicError::MaxMintPerTxExceeded(max_tx));
       }
@@ -335,7 +335,6 @@ type MintTermsValue = (
   Option<u32>,          // block cap
   Option<u128>,         // cap
   Option<RelicIdValue>, // manifest
-  Option<u8>,           // max per tx
   Option<u32>,          // max unmints
   Option<u128>,         // stored price:
   //   - Some(n) with n != 0 represents PriceModel::Fixed(n)
@@ -345,6 +344,7 @@ type MintTermsValue = (
   Option<u128>, // formula_c (for formula pricing)
   Option<u128>, // seed
   Option<u64>,  // swap_height
+  Option<u8>,   // tx cap
 );
 
 impl Entry for MintTerms {
@@ -356,7 +356,6 @@ impl Entry for MintTerms {
       block_cap,
       cap,
       manifest,
-      max_per_tx,
       max_unmints,
       price_type,
       price_fixed_or_a,
@@ -364,6 +363,7 @@ impl Entry for MintTerms {
       formula_c,
       seed,
       swap_height,
+      tx_cap,
     ): Self::Value,
   ) -> Self {
     let price = match price_type {
@@ -382,11 +382,11 @@ impl Entry for MintTerms {
       block_cap,
       cap,
       manifest: manifest.map(RelicId::load),
-      max_per_tx,
       max_unmints,
       price,
       seed,
       swap_height,
+      tx_cap,
     }
   }
 
@@ -401,7 +401,6 @@ impl Entry for MintTerms {
       self.block_cap,
       self.cap,
       self.manifest.map(RelicId::store),
-      self.max_per_tx,
       self.max_unmints,
       price_type,
       price_fixed_or_a,
@@ -409,6 +408,7 @@ impl Entry for MintTerms {
       formula_c,
       self.seed,
       self.swap_height,
+      self.tx_cap,
     )
   }
 }
@@ -601,10 +601,10 @@ mod tests {
         block_cap: None,
         cap: Some(1),
         max_unmints: None,
-        max_per_tx: None,
         price: Some(8),
         seed: Some(22),
         swap_height: Some(400_000),
+        tx_cap: None,
       }),
       state: RelicState {
         burned: 33,

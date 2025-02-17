@@ -141,11 +141,11 @@ impl Context {
         // total amount of bonestone delegate inscriptions
         cap: Some(3_670_709),
         manifest: None,
-        max_per_tx: None,
         max_unmints: None,
         price: None,
         seed: None,
         swap_height: None,
+        tx_cap: None,
       }),
       state: RelicState {
         subsidy_locked: true,
