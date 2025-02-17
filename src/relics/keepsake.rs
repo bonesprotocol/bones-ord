@@ -1,5 +1,12 @@
 use bitcoin::blockdata::constants::MAX_SCRIPT_ELEMENT_SIZE;
-use {super::*, enshrining::{MultiMint, PriceModel}, flag::Flag, message::Message, tag::Tag};
+use {
+  super::*,
+  enshrining::{BoostTerms, MultiMint, PriceModel},
+  flag::Flag,
+  manifest::Manifest,
+  message::Message,
+  tag::Tag,
+};
 
 mod flag;
 mod message;
@@ -20,6 +27,8 @@ pub struct Keepsake {
   pub sealing: bool,
   /// enshrine a previously sealed Relic
   pub enshrining: Option<Enshrining>,
+  /// create a manifest
+  pub manifest: Option<Manifest>,
   /// mint given Relic
   pub mint: Option<RelicId>,
   /// multi mint (also unmint) given Relic
@@ -91,7 +100,20 @@ impl Keepsake {
     let sealing = Flag::Sealing.take(&mut flags);
     let release = Flag::Release.take(&mut flags);
 
+    let manifest = Flag::Manifest.take(&mut flags).then(|| Manifest {
+      // Try to take the left/right parent values from the fields.
+      left_parent: Tag::LeftParent.take(&mut fields, |[val]| Some(val)),
+      right_parent: Tag::RightParent.take(&mut fields, |[val]| Some(val)),
+    });
+
     let enshrining = Flag::Enshrining.take(&mut flags).then(|| Enshrining {
+      boost_terms: Flag::BoostTerms.take(&mut flags).then(|| BoostTerms {
+        rare_chance: Tag::RareChance.take(&mut fields, |[val]| u32::try_from(val).ok()),
+        rare_multiplier: Tag::RareMultiplier.take(&mut fields, |[val]| u16::try_from(val).ok()),
+        ultra_rare_chance: Tag::UltraRareChance.take(&mut fields, |[val]| u32::try_from(val).ok()),
+        ultra_rare_multiplier: Tag::UltraRareMultiplier
+          .take(&mut fields, |[val]| u16::try_from(val).ok()),
+      }),
       symbol: Tag::Symbol.take(&mut fields, |[symbol]| {
         char::from_u32(u32::try_from(symbol).ok()?)
       }),
@@ -99,25 +121,38 @@ impl Keepsake {
       mint_terms: Flag::MintTerms.take(&mut flags).then(|| MintTerms {
         amount: Tag::Amount.take(&mut fields, |[amount]| Some(amount)),
         cap: Tag::Cap.take(&mut fields, |[cap]| Some(cap)),
-        max_per_block: Tag::MaxPerBlock.take(&mut fields, |[val]| u16::try_from(val).ok()),
-        max_per_tx: Tag::MaxPerTx.take(&mut fields, |[val]| u32::try_from(val).ok()),
-        max_unmints: Tag::MaxUnmints.take(&mut fields, |[val]| u32::try_from(val).ok()),
-        price: Tag::Price.take(&mut fields, |values: [u128; 1]| {
-          Some(PriceModel::Fixed(values[0]))
-        }).or_else(|| {
-          Tag::Price.take(&mut fields, |values: [u128; 4]| {
-            if values[0] == 0 {
-              Some(PriceModel::Formula { a: values[1], b: values[2], c: values[3] })
-            } else {
-              None
-            }
-          })
+        manifest: Tag::Manifest.take(&mut fields, |[block, tx]| {
+          RelicId::new(block.try_into().ok()?, tx.try_into().ok()?)
         }),
+        max_per_block: Tag::MaxPerBlock.take(&mut fields, |[val]| u32::try_from(val).ok()),
+        max_per_tx: Tag::MaxPerTx.take(&mut fields, |[val]| u8::try_from(val).ok()),
+        max_unmints: Tag::MaxUnmints.take(&mut fields, |[val]| u32::try_from(val).ok()),
+        price: Tag::Price
+          .take(&mut fields, |values: [u128; 1]| {
+            Some(PriceModel::Fixed(values[0]))
+          })
+          .or_else(|| {
+            Tag::Price.take(&mut fields, |values: [u128; 4]| {
+              if values[0] == 0 {
+                Some(PriceModel::Formula {
+                  a: values[1],
+                  b: values[2],
+                  c: values[3],
+                })
+              } else {
+                None
+              }
+            })
+          }),
         seed: get_non_zero(Tag::Seed, &mut fields),
         swap_height: Tag::SwapHeight.take(&mut fields, |[height]| u64::try_from(height).ok()),
       }),
       turbo: Flag::Turbo.take(&mut flags),
     });
+
+    if manifest.is_some() && enshrining.is_some() {
+      flaw.get_or_insert(RelicFlaw::EnshriningAndManifest);
+    }
 
     let mint = get_relic_id(Tag::Mint, &mut fields);
     let unmint = get_relic_id(Tag::Unmint, &mut fields);
@@ -129,12 +164,17 @@ impl Keepsake {
     } else {
       None
     } {
-      let count = Tag::MultiMintCount.take(&mut fields, |[val]| u32::try_from(val).ok())?;
+      let count = Tag::MultiMintCount.take(&mut fields, |[val]| u8::try_from(val).ok())?;
       let base_limit = Tag::MultiMintBaseLimit.take(&mut fields, |[val]| Some(val))?;
       let relic = Tag::MultiMintRelic.take(&mut fields, |[block, tx]| {
         RelicId::new(block.try_into().ok()?, tx.try_into().ok()?)
       })?;
-      Some(MultiMint { count, base_limit, relic, is_unmint })
+      Some(MultiMint {
+        count,
+        base_limit,
+        relic,
+        is_unmint,
+      })
     } else {
       None
     };
@@ -226,7 +266,42 @@ impl Keepsake {
           false
         }
       });
-      if !terms_valid || enshrining.max_supply().is_none() {
+      let boost_valid = enshrining.boost_terms.map_or(true, |boost| {
+        let rare_valid = if boost.rare_chance.is_some() || boost.rare_multiplier.is_some() {
+          if let (Some(rc), Some(rm)) = (boost.rare_chance, boost.rare_multiplier) {
+            rc != 0 && rm > 1
+          } else {
+            false
+          }
+        } else {
+          true
+        };
+        let ultra_valid =
+          if boost.ultra_rare_chance.is_some() || boost.ultra_rare_multiplier.is_some() {
+            if let (Some(urc), Some(urm)) = (boost.ultra_rare_chance, boost.ultra_rare_multiplier) {
+              urc != 0 && urm > 1
+            } else {
+              false
+            }
+          } else {
+            true
+          };
+        let multiplier_valid = enshrining
+          .mint_terms
+          .as_ref()
+          .and_then(|terms| terms.amount)
+          .map_or(true, |amount| {
+            let rare_mul_valid = boost
+              .rare_multiplier
+              .map_or(true, |rm| amount.checked_mul(rm as u128).is_some());
+            let ultra_mul_valid = boost
+              .ultra_rare_multiplier
+              .map_or(true, |urm| amount.checked_mul(urm as u128).is_some());
+            rare_mul_valid && ultra_mul_valid
+          });
+        rare_valid && ultra_valid && multiplier_valid
+      });
+      if !boost_valid || !terms_valid || enshrining.max_supply().is_none() {
         flaw.get_or_insert(RelicFlaw::InvalidEnshrining);
       }
     }
@@ -243,7 +318,11 @@ impl Keepsake {
     }
 
     // Additionally, base token must not be multi minted.
-    if multi_mint.as_ref().map(|m| m.relic == RELIC_ID).unwrap_or(false) {
+    if multi_mint
+      .as_ref()
+      .map(|m| m.relic == RELIC_ID)
+      .unwrap_or(false)
+    {
       flaw.get_or_insert(RelicFlaw::InvalidBaseTokenMint);
     }
 
@@ -273,6 +352,7 @@ impl Keepsake {
       claim,
       sealing,
       enshrining,
+      manifest,
       mint,
       multi_mint,
       unmint,
@@ -295,6 +375,12 @@ impl Keepsake {
       Flag::Release.set(&mut flags);
     }
 
+    if let Some(manifest) = self.manifest {
+      Flag::Manifest.set(&mut flags);
+      Tag::LeftParent.encode_option(manifest.left_parent, &mut payload);
+      Tag::RightParent.encode_option(manifest.right_parent, &mut payload);
+    }
+
     if let Some(enshrining) = self.enshrining {
       Flag::Enshrining.set(&mut flags);
 
@@ -304,6 +390,14 @@ impl Keepsake {
 
       Tag::Symbol.encode_option(enshrining.symbol, &mut payload);
       Tag::Subsidy.encode_option(enshrining.subsidy, &mut payload);
+
+      if let Some(boost) = enshrining.boost_terms {
+        Flag::BoostTerms.set(&mut flags);
+        Tag::RareChance.encode_option(boost.rare_chance, &mut payload);
+        Tag::RareMultiplier.encode_option(boost.rare_multiplier, &mut payload);
+        Tag::UltraRareChance.encode_option(boost.ultra_rare_chance, &mut payload);
+        Tag::UltraRareMultiplier.encode_option(boost.ultra_rare_multiplier, &mut payload);
+      }
 
       if let Some(terms) = enshrining.mint_terms {
         Flag::MintTerms.set(&mut flags);

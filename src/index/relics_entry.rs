@@ -1,7 +1,8 @@
 use {
   super::*,
   crate::relics::{
-    BalanceDiff, MintTerms, Pool, PoolSwap, PriceModel, Relic, RelicError, RelicId, SpacedRelic,
+    BalanceDiff, BoostTerms, MintTerms, Pool, PoolSwap, PriceModel, Relic, RelicError, RelicId,
+    SpacedRelic,
   },
   bitcoin::ScriptHash,
 };
@@ -91,7 +92,9 @@ pub type RelicStateValue = (u128, u128, u128, u128, u128, bool);
 impl Entry for RelicState {
   type Value = RelicStateValue;
 
-  fn load((burned, mints, unmints, subsidy, subsidy_remaining, subsidy_locked): Self::Value) -> Self {
+  fn load(
+    (burned, mints, unmints, subsidy, subsidy_remaining, subsidy_locked): Self::Value,
+  ) -> Self {
     Self {
       burned,
       mints,
@@ -122,6 +125,7 @@ pub struct RelicEntry {
   pub spaced_relic: SpacedRelic,
   pub symbol: Option<char>,
   pub owner_sequence_number: Option<u32>,
+  pub boost_terms: Option<BoostTerms>,
   pub mint_terms: Option<MintTerms>,
   pub state: RelicState,
   pub pool: Option<Pool>,
@@ -170,9 +174,9 @@ impl RelicEntry {
     let amount = terms.amount.unwrap_or_default();
     let price = match terms.price {
       Some(PriceModel::Fixed(fixed)) => fixed,
-      Some(PriceModel::Formula { .. }) => {
-        terms.compute_price(mint_index).ok_or(RelicError::PriceComputationError)?
-      }
+      Some(PriceModel::Formula { .. }) => terms
+        .compute_price(mint_index)
+        .ok_or(RelicError::PriceComputationError)?,
       None => return Err(RelicError::PriceComputationError),
     };
     Ok((amount, price))
@@ -181,7 +185,7 @@ impl RelicEntry {
   pub fn multi_mintable(
     &self,
     base_balance: u128,
-    num_mints: u32,
+    num_mints: u8,
     base_limit: u128,
   ) -> Result<Vec<(u128, u128)>, RelicError> {
     let terms = self.mint_terms.ok_or(RelicError::Unmintable)?;
@@ -215,7 +219,7 @@ impl RelicEntry {
     Ok(results)
   }
 
-  pub fn multi_unmintable(&self, count: u32) -> Result<Vec<(u128, u128)>, RelicError> {
+  pub fn multi_unmintable(&self, count: u8) -> Result<Vec<(u128, u128)>, RelicError> {
     let terms = self.mint_terms.as_ref().ok_or(RelicError::Unmintable)?;
     let max_unmints = terms.max_unmints.ok_or(RelicError::UnmintNotAllowed)? as u128;
     if self.state.mints < count as u128 {
@@ -233,9 +237,9 @@ impl RelicEntry {
       let mint_index = self.state.mints - 1 - i as u128;
       let price = match terms.price {
         Some(PriceModel::Fixed(fixed)) => fixed,
-        Some(PriceModel::Formula { .. }) => {
-          terms.compute_price(mint_index).ok_or(RelicError::PriceComputationError)?
-        }
+        Some(PriceModel::Formula { .. }) => terms
+          .compute_price(mint_index)
+          .ok_or(RelicError::PriceComputationError)?,
         None => return Err(RelicError::PriceComputationError),
       };
       let amount = terms.amount.unwrap_or_default();
@@ -329,9 +333,10 @@ impl RelicEntry {
 type MintTermsValue = (
   Option<u128>, // amount
   Option<u128>, // cap
-  Option<u16>, // max per block
-  Option<u32>, // max per tx
-  Option<u32>, // max unmints
+  Option<RelicIdValue>, // manifest
+  Option<u32>,  // max per block
+  Option<u8>,   // max per tx
+  Option<u32>,  // max unmints
   Option<u128>, // stored price:
   //   - Some(n) with n != 0 represents PriceModel::Fixed(n)
   //   - Some(0) indicates formula pricing (with a, b, c below)
@@ -345,9 +350,11 @@ type MintTermsValue = (
 impl Entry for MintTerms {
   type Value = MintTermsValue;
 
-  fn load((
+  fn load(
+    (
       amount,
       cap,
+      manifest,
       max_per_block,
       max_per_tx,
       max_unmints,
@@ -357,7 +364,8 @@ impl Entry for MintTerms {
       formula_c,
       seed,
       swap_height,
-    ): Self::Value) -> Self {
+    ): Self::Value,
+  ) -> Self {
     let price = match price_type {
       Some(1) => price_fixed_or_a.map(|p| PriceModel::Fixed(p)),
       Some(2) => {
@@ -372,6 +380,7 @@ impl Entry for MintTerms {
     Self {
       amount,
       cap,
+      manifest: manifest.map(RelicId::load),
       max_per_block,
       max_per_tx,
       max_unmints,
@@ -390,6 +399,7 @@ impl Entry for MintTerms {
     (
       self.amount,
       self.cap,
+      self.manifest.map(RelicId::store),
       self.max_per_block,
       self.max_per_tx,
       self.max_unmints,
@@ -399,6 +409,35 @@ impl Entry for MintTerms {
       formula_c,
       self.seed,
       self.swap_height,
+    )
+  }
+}
+
+pub type BoostTermsValue = (
+  Option<u32>, // rare_chance
+  Option<u16>, // rare_multiplier
+  Option<u32>, // ultra_rare_chance
+  Option<u16>, // ultra_rare_multiplier
+);
+
+impl Entry for BoostTerms {
+  type Value = BoostTermsValue;
+  fn load(
+    (rare_chance, rare_multiplier, ultra_rare_chance, ultra_rare_multiplier): Self::Value,
+  ) -> Self {
+    Self {
+      rare_chance,
+      rare_multiplier,
+      ultra_rare_chance,
+      ultra_rare_multiplier,
+    }
+  }
+  fn store(self) -> Self::Value {
+    (
+      self.rare_chance,
+      self.rare_multiplier,
+      self.ultra_rare_chance,
+      self.ultra_rare_multiplier,
     )
   }
 }
@@ -422,17 +461,18 @@ impl Entry for Pool {
 }
 
 pub type RelicEntryValue = (
-  u64,                    // block
-  (u128, u128),           // enshrining
-  u64,                    // number
-  SpacedRelicValue,       // spaced_relic
-  Option<char>,           // symbol
-  Option<u32>,            // owner sequence number
-  Option<MintTermsValue>, // mint_terms
-  RelicStateValue,        // state
-  Option<PoolValue>,      // pool
-  u64,                    // timestamp
-  bool,                   // turbo
+  u64,                     // block
+  (u128, u128),            // enshrining
+  u64,                     // number
+  SpacedRelicValue,        // spaced_relic
+  Option<char>,            // symbol
+  Option<u32>,             // owner sequence number
+  Option<BoostTermsValue>, // boost_terms
+  Option<MintTermsValue>,  // mint_terms
+  RelicStateValue,         // state
+  Option<PoolValue>,       // pool
+  u64,                     // timestamp
+  bool,                    // turbo
 );
 
 impl Default for RelicEntry {
@@ -444,6 +484,7 @@ impl Default for RelicEntry {
       spaced_relic: SpacedRelic::default(),
       symbol: None,
       owner_sequence_number: None,
+      boost_terms: None,
       mint_terms: None,
       state: RelicState::default(),
       pool: None,
@@ -464,6 +505,7 @@ impl Entry for RelicEntry {
       spaced_relic,
       symbol,
       owner_sequence_number,
+      boost_terms,
       mint_terms,
       state,
       pool,
@@ -483,6 +525,7 @@ impl Entry for RelicEntry {
       spaced_relic: SpacedRelic::load(spaced_relic),
       symbol,
       owner_sequence_number,
+      boost_terms: boost_terms.map(BoostTerms::load),
       mint_terms: mint_terms.map(MintTerms::load),
       state: RelicState::load(state),
       pool: pool.map(Pool::load),
@@ -519,6 +562,7 @@ impl Entry for RelicEntry {
       self.spaced_relic.store(),
       self.symbol,
       self.owner_sequence_number,
+      self.boost_terms.map(|boost| boost.store()),
       self.mint_terms.map(|terms| terms.store()),
       self.state.store(),
       self.pool.map(|pool| pool.store()),

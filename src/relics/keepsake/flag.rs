@@ -12,6 +12,8 @@ pub(super) enum Flag {
   Turbo = 10,
   MultiMint = 11,
   MultiUnmint = 12,
+  BoostTerms = 13,
+  Manifest = 14,
   #[allow(unused)]
   Cenotaph = 127,
 }

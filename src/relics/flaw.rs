@@ -3,6 +3,7 @@ use super::*;
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RelicFlaw {
+  EnshriningAndManifest,
   EnshriningAndSummoning,
   InvalidEnshrining,
   InvalidBaseTokenMint,
@@ -24,6 +25,7 @@ pub enum RelicFlaw {
 impl Display for RelicFlaw {
   fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
     match self {
+      Self::EnshriningAndManifest => write!(f, "enshrining and manifest in one tx"),
       Self::EnshriningAndSummoning => write!(f, "enshrining and summoning in one tx"),
       Self::InvalidEnshrining => write!(f, "invalid enshrining"),
       Self::InvalidBaseTokenMint => write!(

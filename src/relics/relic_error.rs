@@ -11,10 +11,10 @@ pub enum RelicError {
   MintInsufficientBalance(u128),
   UnmintNotAllowed,
   NoMintsToUnmint,
-  MaxMintPerTxExceeded(u32),
+  MaxMintPerTxExceeded(u8),
   MintBaseLimitExceeded(u128, u128),
   UnmintInsufficientBalance(u128, u128),
-  MintBlockCapExceeded(u16),
+  MintBlockCapExceeded(u32),
   SwapNotAvailable,
   SwapHeightNotReached(u64),
   SwapFailed(PoolError),
@@ -40,6 +40,7 @@ pub enum RelicError {
   ChestNotFound,
   ChestLocked(u64),
   NoClaimableBalance,
+  ManifestValidation
 }
 
 impl Display for RelicError {
@@ -61,7 +62,10 @@ impl Display for RelicError {
       RelicError::UnmintInsufficientBalance(required, available) => {
         write!(f, "insufficient minted token balance for unmint: required {required}, available {available}")
       }
-      RelicError::MintBlockCapExceeded(limit) => write!(f, "max mints per block exceeded: only {limit} allowed per block"),
+      RelicError::MintBlockCapExceeded(limit) => write!(
+        f,
+        "max mints per block exceeded: only {limit} allowed per block"
+      ),
       RelicError::PriceComputationError => write!(f, "price computation error"),
       RelicError::SwapNotAvailable => write!(f, "liquidity pool for swap not available (yet)"),
       RelicError::SwapHeightNotReached(swap_height) => {
@@ -111,6 +115,7 @@ impl Display for RelicError {
       RelicError::NoClaimableBalance => {
         write!(f, "unable to claim: No claimable balance for given output")
       }
+      RelicError::ManifestValidation => write!(f, "manifest validation failed"),
     }
   }
 }

@@ -6,16 +6,18 @@ use {
       chest_entry::ChestEntry,
       event::{EventEmitter, EventInfo, RelicOperation},
       lot::Lot,
+      manfest_entry::{ManifestEntry, ManifestedMinterValue},
       relics_entry::{RelicEntry, RelicOwner, RelicState},
       syndicate_entry::SyndicateEntry,
       updater::relics_balance::RelicsBalance,
     },
     relics::{
-      BalanceDiff, Enshrining, Keepsake, Pool, PoolSwap, PriceModel, RelicArtifact, RelicError, SpacedRelic,
-      Summoning, Swap, SwapDirection, RELIC_ID,
+      manifest::Manifest, BalanceDiff, BoostTerms, Enshrining, Keepsake, Pool, PoolSwap,
+      RelicArtifact, RelicError, SpacedRelic, Summoning, Swap, SwapDirection, RELIC_ID,
     },
   },
 };
+use crate::index::manfest_entry::ManifestedMinter;
 
 pub(super) struct RelicUpdater<'a, 'tx, 'index, 'emitter> {
   pub(super) block_time: u32,
@@ -28,7 +30,11 @@ pub(super) struct RelicUpdater<'a, 'tx, 'index, 'emitter> {
   pub(super) id_to_entry: &'a mut Table<'tx, RelicIdValue, RelicEntryValue>,
   pub(super) id_to_syndicate: &'a mut Table<'tx, SyndicateIdValue, SyndicateEntryValue>,
   pub(super) inscription_id_to_sequence_number: &'a Table<'tx, &'static InscriptionIdValue, u32>,
-  pub(super) mints_in_block: HashMap<RelicId, u16>,
+  // using RelicIdValue type for manifest ID (block + tx index)
+  pub(super) manifest_id_to_manifest: &'a mut Table<'tx, RelicIdValue, ManifestEntryValue>,
+  pub(super) manifested_minter_to_mints_left: &'a mut Table<'tx, ManifestedMinterValue, u8>,
+  pub(super) manifests: u64,
+  pub(super) mints_in_block: HashMap<RelicId, u32>,
   pub(super) outpoint_to_balances: &'a mut Table<'tx, &'static OutPointValue, &'static [u8]>,
   pub(super) relic_owner_to_claimable: &'a mut Table<'tx, &'static RelicOwnerValue, u128>,
   pub(super) relic_to_id: &'a mut Table<'tx, u128, RelicIdValue>,
@@ -85,6 +91,10 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
         }
       }
 
+      if let Some(manifest) = keepsake.manifest {
+        self.handle_manifest(txid, tx, tx_index, manifest, &mut balances)?;
+      }
+
       let enshrined_relic = if let Some(enshrining) = keepsake.enshrining {
         match self.enshrine_relic(tx, txid, tx_index, enshrining)? {
           Ok(id) => Some(id),
@@ -105,7 +115,11 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
       };
 
       if let Some(id) = keepsake.mint {
-        let id = if id == RelicId::default() { enshrined_relic } else { Some(id) };
+        let id = if id == RelicId::default() {
+          enshrined_relic
+        } else {
+          Some(id)
+        };
         if let Some(id) = id {
           match self.mint(txid, id, balances.get(RELIC_ID))? {
             Ok((amount, price)) => {
@@ -215,20 +229,21 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
                 Ok(lots) => {
                   let (total_relic, total_base) = lots.iter().fold(
                     (0u128, 0u128),
-                    |(acc_r, acc_b), (Lot(amount), Lot(price))| (acc_r + amount, acc_b + price)
+                    |(acc_r, acc_b), (Lot(amount), Lot(price))| (acc_r + amount, acc_b + price),
                   );
-                  // Remove the unminted tokens from `id`'s balance and refund base tokens to RELIC balance.
-                  balances.remove(id, Lot(total_relic));
-                  balances.add(RELIC_ID, Lot(total_base));
                   self.event_emitter.emit(
                     txid,
                     EventInfo::RelicMultiMinted {
                       relic_id: id,
-                      amount: total_relic,
+                      amount: total_base,
                       num_mints: multi.count,
                       base_limit: multi.base_limit,
+                      is_unmint: true,
                     },
                   )?;
+                  // Remove the unminted tokens from `id`'s balance and refund base tokens to RELIC balance.
+                  balances.remove(id, Lot(total_relic));
+                  balances.add(RELIC_ID, Lot(total_base));
                 }
                 Err(error) => {
                   eprintln!("MultiUnmint error: {error}");
@@ -244,14 +259,18 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
             }
           } else {
             // Mint operation
-            match self.multi_mint(txid, id, balances.get(RELIC_ID), multi.count, multi.base_limit)? {
+            match self.multi_mint(
+              txid,
+              id,
+              balances.get(RELIC_ID),
+              multi.count,
+              multi.base_limit,
+            )? {
               Ok(lots) => {
                 let (total_relic, total_base) = lots.iter().fold(
                   (0u128, 0u128),
-                  |(acc_r, acc_b), (Lot(amount), Lot(price))| (acc_r + amount, acc_b + price)
+                  |(acc_r, acc_b), (Lot(amount), Lot(price))| (acc_r + amount, acc_b + price),
                 );
-                balances.remove(RELIC_ID, Lot(total_base));
-                balances.add(id, Lot(total_relic));
                 self.event_emitter.emit(
                   txid,
                   EventInfo::RelicMultiMinted {
@@ -259,8 +278,11 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
                     amount: total_relic,
                     num_mints: multi.count,
                     base_limit: multi.base_limit,
+                    is_unmint: false,
                   },
                 )?;
+                balances.remove(RELIC_ID, Lot(total_base));
+                balances.add(id, Lot(total_relic));
               }
               Err(error) => {
                 eprintln!("MultiMint error: {error}");
@@ -481,6 +503,7 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
     let Enshrining {
       symbol,
       subsidy,
+      boost_terms,
       mint_terms,
       turbo,
     } = enshrining;
@@ -506,6 +529,7 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
       spaced_relic,
       symbol,
       owner_sequence_number: Some(owner_sequence_number),
+      boost_terms,
       mint_terms,
       state: RelicState {
         burned: 0,
@@ -526,6 +550,116 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
       .event_emitter
       .emit(txid, EventInfo::RelicEnshrined { relic_id: id })?;
 
+    Ok(())
+  }
+
+  fn handle_manifest(
+    &mut self,
+    txid: Txid,
+    tx: &Transaction,
+    tx_index: u32,
+    manifest: Manifest,
+    balances: &mut RelicsBalance,
+  ) -> Result<()> {
+    let inscription_entries = self.tx_inscriptions(txid, tx)?;
+    if let Some(inscription_entry) = inscription_entries.into_iter().find(|entry| {
+      if let Ok(Some(inscription)) = self.index.get_inscription_by_id(entry.id) {
+        inscription.content_type().map_or(false, |ct| ct.starts_with("text/csv"))
+      } else {
+        false
+      }
+    }) {
+      let inscription = self
+        .index
+        .get_inscription_by_id(inscription_entry.id)?
+        .ok_or_else(|| anyhow!("inscription {} not found", inscription_entry.id))?;
+      let manifest_id = RelicId {
+        block: self.height.into(),
+        tx: tx_index,
+      };
+      let title = match inscription.metadata_field("manifest") {
+        Some(title) => title,
+        None => {
+          eprintln!("Manifest title is missing");
+          self.event_emitter.emit(
+            txid,
+            EventInfo::RelicError {
+              operation: RelicOperation::Manifest,
+              error: RelicError::ManifestValidation,
+            },
+          )?;
+          return Ok(());
+        }
+      };
+      if let Err(err) = Manifest::validate_title(&title) {
+        eprintln!("Manifest validation error: {err}");
+        self.event_emitter.emit(
+          txid,
+          EventInfo::RelicError {
+            operation: RelicOperation::Manifest,
+            error: RelicError::ManifestValidation,
+          },
+        )?;
+        return Ok(());
+      }
+      if let Some(content_str) = inscription
+        .clone()
+        .into_body()
+        .map(|bytes| String::from_utf8_lossy(&bytes).to_string())
+      {
+        let mut rdr = csv::ReaderBuilder::new().has_headers(false).from_reader(content_str.as_bytes());
+        let validated_minters = rdr
+          .records()
+          .map(|result| {
+            let record = result?;
+            if record.len() != 2 {
+              return Err(anyhow!("Expected 2 fields, got {}", record.len()));
+            }
+            let address: Address = record[0].parse()?;
+            let num_mints: u8 = record[1].parse()?;
+            Ok((
+              ManifestedMinter {
+                owner: RelicOwner(address.script_pubkey().script_hash()),
+                manifest: manifest_id.clone(),
+              },
+              num_mints,
+            ))
+          })
+          .collect::<Result<Vec<_>, _>>();
+        match validated_minters {
+          Ok(minters) if !minters.is_empty() => {
+            let number = self.manifests;
+            self.manifests += 1;
+            self.statistic_to_count.insert(&Statistic::Manifests.into(), self.manifests)?;
+            let manifest_entry = ManifestEntry {
+              left_parent: manifest.left_parent,
+              right_parent: manifest.right_parent,
+              number,
+              inscription_number: inscription_entry.sequence_number,
+              title: Some(title.to_string()),
+            };
+            self.manifest_id_to_manifest.insert(manifest_id.store(), manifest_entry.store())?;
+            let creation_fee = Lot(manifest.creation_fee());
+            balances.remove(RELIC_ID, creation_fee);
+            balances.burn(RELIC_ID, creation_fee);
+            for (minter, count) in minters {
+              self.manifested_minter_to_mints_left.insert(minter.store(), count)?;
+            }
+          }
+          Ok(_) => { /* No valid minters; skip manifest storage. */ }
+          Err(error) => {
+            eprintln!("Manifest CSV validation error: {error}");
+            self.event_emitter.emit(
+              txid,
+              EventInfo::RelicError {
+                operation: RelicOperation::Manifest,
+                error: RelicError::ManifestValidation,
+              },
+            )?;
+          }
+        }
+      }
+    }
     Ok(())
   }
 
@@ -1132,10 +1266,45 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
       EventInfo::RelicMinted {
         relic_id: RELIC_ID,
         amount,
+        multiplier: 1,
+        is_unmint: false,
       },
     )?;
 
     Ok(Some(Lot(amount)))
+  }
+
+  fn compute_boost_multiplier(
+    &self,
+    relic_id: &RelicId,
+    txid: &Txid,
+    mint_index: u128,
+    boost: &BoostTerms,
+  ) -> u32 {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    relic_id.block.hash(&mut hasher);
+    txid.hash(&mut hasher);
+    mint_index.hash(&mut hasher);
+    let seed = hasher.finish();
+    let rand_val = (seed % 1_000_000) as u32;
+    let mut multiplier = 1;
+    if let (Some(ur_chance), Some(ur_multiplier)) =
+      (boost.ultra_rare_chance, boost.ultra_rare_multiplier)
+    {
+      if rand_val < ur_chance {
+        multiplier = ur_multiplier as u32;
+      }
+    }
+    if multiplier == 1 {
+      if let (Some(r_chance), Some(r_multiplier)) = (boost.rare_chance, boost.rare_multiplier) {
+        if rand_val < r_chance {
+          multiplier = r_multiplier as u32;
+        }
+      }
+    }
+    multiplier
   }
 
   fn mint(
@@ -1162,12 +1331,19 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
       }
     }
 
-    let (amount, price) = match relic_entry.mintable(base_balance) {
+    let (base_amount, price) = match relic_entry.mintable(base_balance) {
       Ok(result) => result,
-      Err(cause) => {
-        return Ok(Err(cause));
-      }
+      Err(cause) => return Ok(Err(cause)),
     };
+
+    let mut final_amount = base_amount;
+    let mut multiplier = 1; // Define multiplier in outer scope.
+    if let Some(boost) = relic_entry.boost_terms {
+      multiplier = self.compute_boost_multiplier(&id, &txid, relic_entry.state.mints, &boost);
+      if let Some(new_amount) = final_amount.checked_mul(multiplier as u128) {
+        final_amount = new_amount;
+      }
+    }
 
     // Increment per-block mint counter.
     if let Some(terms) = relic_entry.mint_terms {
@@ -1185,7 +1361,6 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
       let base_supply = relic_entry.locked_base_supply();
       let quote_supply = relic_entry.mint_terms.unwrap().seed.unwrap_or_default();
       if base_supply == 0 || quote_supply == 0 {
-        // this is explicitly not an error, it's expected to happen at least with the Base Token Relic, but is not limited to it
         eprintln!(
           "unable to create pool for Relic {}: both token supplies must be non-zero, but got base/quote supply of {base_supply}/{quote_supply}",
           relic_entry.spaced_relic
@@ -1194,7 +1369,6 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
         relic_entry.pool = Some(Pool {
           base_supply,
           quote_supply,
-          // for now the fee is always 1%
           fee_percentage: 1,
         })
       }
@@ -1206,11 +1380,13 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
       txid,
       EventInfo::RelicMinted {
         relic_id: id,
-        amount,
+        amount: final_amount,
+        multiplier,
+        is_unmint: false,
       },
     )?;
 
-    Ok(Ok((Lot(amount), Lot(price))))
+    Ok(Ok((Lot(final_amount), Lot(price))))
   }
 
   fn multi_mint(
@@ -1218,10 +1394,13 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
     txid: Txid,
     id: RelicId,
     base_balance: u128,
-    num_mints: u32,
+    num_mints: u8,
     base_limit: u128,
   ) -> Result<Result<Vec<(Lot, Lot)>, RelicError>> {
-    assert_ne!(id, RELIC_ID, "the parser produced an invalid Mint for the base token");
+    assert_ne!(
+      id, RELIC_ID,
+      "the parser produced an invalid Mint for the base token"
+    );
     let Some(mut relic_entry) = self.load_relic_entry(id)? else {
       return Ok(Err(RelicError::RelicNotFound(id)));
     };
@@ -1230,20 +1409,35 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
     if let Some(terms) = relic_entry.mint_terms {
       if let Some(max_per_block) = terms.max_per_block {
         let current = self.mints_in_block.get(&id).cloned().unwrap_or(0);
-        if (current as u32).saturating_add(num_mints) > max_per_block as u32 {
+        if current.saturating_add(num_mints as u32) > max_per_block {
           return Ok(Err(RelicError::MintBlockCapExceeded(max_per_block)));
         }
       }
     }
 
+    let current_mints = relic_entry.state.mints;
     let mint_results = relic_entry.multi_mintable(base_balance, num_mints, base_limit)?;
-    relic_entry.state.mints += mint_results.len() as u128;
+    let mut boosted_results = Vec::with_capacity(mint_results.len());
+    // New: collect boost details as (mint_index, multiplier)
+    if let Some(boost) = relic_entry.boost_terms {
+      for (i, (amount, price)) in mint_results.into_iter().enumerate() {
+        let mint_index = current_mints + i as u128;
+        let multiplier = self.compute_boost_multiplier(&id, &txid, mint_index, &boost);
+        let final_amount = amount.checked_mul(multiplier as u128).unwrap_or(amount);
+        boosted_results.push((final_amount, price));
+      }
+    } else {
+      // When no boost terms, multiplier is 1.
+      boosted_results = mint_results;
+    }
+
+    relic_entry.state.mints += boosted_results.len() as u128;
 
     // Update per-block mint counter.
     if let Some(terms) = relic_entry.mint_terms {
-      if let Some(_) = terms.max_per_block {
+      if terms.max_per_block.is_some() {
         let counter = self.mints_in_block.entry(id).or_insert(0);
-        *counter = counter.saturating_add(mint_results.len() as u16);
+        *counter = counter.saturating_add(boosted_results.len() as u32);
       }
     }
 
@@ -1254,8 +1448,8 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
         let quote_supply = terms.seed.unwrap_or_default();
         if base_supply == 0 || quote_supply == 0 {
           eprintln!(
-            "unable to create pool for Relic {}: both token supplies must be non-zero, but got base/quote supply of {}/{}",
-            relic_entry.spaced_relic, base_supply, quote_supply
+            "unable to create pool for Relic {}: both token supplies must be non-zero, but got base/quote supply of {base_supply}/{quote_supply}",
+            relic_entry.spaced_relic
           );
         } else {
           relic_entry.pool = Some(Pool {
@@ -1267,21 +1461,10 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
       }
     }
 
-    let lots: Vec<(Lot, Lot)> = mint_results
-      .iter()
-      .map(|&(amount, price)| (Lot(amount), Lot(price)))
+    let lots: Vec<(Lot, Lot)> = boosted_results
+      .into_iter()
+      .map(|(a, p)| (Lot(a), Lot(p)))
       .collect();
-
-    let amount = mint_results.get(0).map(|(a, _)| *a).unwrap_or_default();
-    self.event_emitter.emit(
-      txid,
-      EventInfo::RelicMultiMinted {
-        relic_id: id,
-        amount,
-        num_mints,
-        base_limit,
-      },
-    )?;
 
     self.id_to_entry.insert(&id.store(), relic_entry.store())?;
     Ok(Ok(lots))
@@ -1300,14 +1483,22 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
     let (amount, price) = relic_entry.unmintable()?;
     // Ensure the caller has enough of the minted token to be unminted.
     if token_balance < amount {
-      return Ok(Err(RelicError::UnmintInsufficientBalance(amount, token_balance)));
+      return Ok(Err(RelicError::UnmintInsufficientBalance(
+        amount,
+        token_balance,
+      )));
     }
     relic_entry.state.mints -= 1;
     relic_entry.state.unmints += 1;
     self.id_to_entry.insert(&id.store(), relic_entry.store())?;
     self.event_emitter.emit(
       txid,
-      EventInfo::RelicUnminted { relic_id: id, amount },
+      EventInfo::RelicMinted {
+        relic_id: id,
+        amount,
+        multiplier: 1,
+        is_unmint: true,
+      },
     )?;
     Ok(Ok((Lot(amount), Lot(price))))
   }
@@ -1317,7 +1508,7 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
     txid: Txid,
     id: RelicId,
     token_balance: u128,
-    count: u32,
+    count: u8,
     base_limit: u128, // minimum base tokens the user expects to receive
   ) -> Result<Result<Vec<(Lot, Lot)>, RelicError>> {
     assert_ne!(id, RELIC_ID, "unmint for base token is not allowed");
@@ -1329,12 +1520,18 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
     // Total minted tokens to be removed.
     let total_minted: u128 = results.iter().map(|(a, _)| *a).sum();
     if token_balance < total_minted {
-      return Ok(Err(RelicError::UnmintInsufficientBalance(total_minted, token_balance)));
+      return Ok(Err(RelicError::UnmintInsufficientBalance(
+        total_minted,
+        token_balance,
+      )));
     }
     // Total base tokens to be refunded.
     let total_refund: u128 = results.iter().map(|(_, price)| *price).sum();
     if total_refund < base_limit {
-      return Ok(Err(RelicError::MintBaseLimitExceeded(base_limit, total_refund)));
+      return Ok(Err(RelicError::MintBaseLimitExceeded(
+        base_limit,
+        total_refund,
+      )));
     }
 
     relic_entry.state.mints -= count as u128;
@@ -1342,7 +1539,13 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
     self.id_to_entry.insert(&id.store(), relic_entry.store())?;
     self.event_emitter.emit(
       txid,
-      EventInfo::RelicUnminted { relic_id: id, amount: total_minted },
+      EventInfo::RelicMultiMinted {
+        relic_id: id,
+        amount: total_minted,
+        num_mints: count,
+        base_limit,
+        is_unmint: true,
+      },
     )?;
     let lots = results.into_iter().map(|(a, p)| (Lot(a), Lot(p))).collect();
     Ok(Ok(lots))

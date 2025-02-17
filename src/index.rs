@@ -13,6 +13,7 @@ use {
     index::{
       chest_entry::ChestEntryValue,
       event::Event,
+      manfest_entry::ManifestEntryValue,
       relics_entry::{
         RelicEntry, RelicEntryValue, RelicIdValue, RelicOwner, RelicOwnerValue, RelicState,
         SpacedRelicValue,
@@ -44,12 +45,14 @@ use {
   std::sync::atomic::{self, AtomicBool},
   url::Url,
 };
+use crate::index::manfest_entry::ManifestedMinterValue;
 
 mod chest_entry;
 pub(crate) mod entry;
 pub(crate) mod event;
 mod fetcher;
 mod lot;
+mod manfest_entry;
 pub(crate) mod relics_entry;
 mod reorg;
 mod rtx;
@@ -108,6 +111,9 @@ define_multimap_table! { TRANSACTION_ID_TO_EVENTS, &TxidValue, Event }
 define_table! { HEIGHT_TO_LAST_SEQUENCE_NUMBER, u32, u32 }
 define_table! { SEQUENCE_NUMBER_TO_BONESTONE_BLOCK_HEIGHT, u32, u32 }
 define_multimap_table! { SEQUENCE_NUMBER_TO_CHILDREN, u32, u32 }
+// using RelicIdValue type for manifest ID (block + tx index)
+define_table! { MANIFEST_ID_TO_MANIFEST, RelicIdValue, ManifestEntryValue }
+define_table! { MANIFESTED_MINTER_TO_MINTS_LEFT, ManifestedMinterValue, u8 }
 
 pub(crate) struct Index {
   auth: Auth,
@@ -148,6 +154,7 @@ pub(crate) enum Statistic {
   IndexTransactions,
   IndexRelics = 17,
   Relics = 18,
+  Manifests = 19,
 }
 
 impl Statistic {
@@ -357,6 +364,8 @@ impl Index {
         tx.open_table(SEQUENCE_NUMBER_TO_SATPOINT)?;
         tx.open_table(SEQUENCE_NUMBER_TO_BONESTONE_BLOCK_HEIGHT)?;
         tx.open_multimap_table(SEQUENCE_NUMBER_TO_CHILDREN)?;
+        tx.open_table(MANIFEST_ID_TO_MANIFEST)?;
+        tx.open_table(MANIFESTED_MINTER_TO_MINTS_LEFT)?;
 
         {
           let mut outpoint_to_sat_ranges = tx.open_table(OUTPOINT_TO_SAT_RANGES)?;
@@ -383,11 +392,13 @@ impl Index {
                 spaced_relic: SpacedRelic { relic, spacers: 0 },
                 symbol: Some('🦴'),
                 owner_sequence_number: None,
+                boost_terms: None,
                 mint_terms: Some(MintTerms {
                   // mint amount per burned bonestone = ~21M total supply
                   amount: Some(572_000_000),
                   // total amount of bonestone delegate inscriptions
                   cap: Some(3_670_709),
+                  manifest: None,
                   max_per_block: None,
                   max_per_tx: None,
                   max_unmints: None,

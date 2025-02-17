@@ -1579,7 +1579,7 @@ impl Server {
                         info: event.info,
                         ticker: None,
                       };
-                      
+
                       // If we have a relic ID, try to get its ticker
                       if let Some(relic_id) = relic_id {
                         if let Ok(Some(relic)) = index.get_relic_by_id(relic_id) {
@@ -1588,7 +1588,7 @@ impl Server {
                           }
                         }
                       }
-                      
+
                       all_events.push(event_with_info);
                       if all_events.len() >= 1000 {
                         break;

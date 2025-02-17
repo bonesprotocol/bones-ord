@@ -16,13 +16,19 @@ pub(super) enum Tag {
   MaxUnmints = 24,
   MaxPerBlock = 26,
   MaxPerTx = 28,
+  Manifest = 100,
   // Mint
   Mint = 20,
-  Unmint = 70,
+  Unmint = 80,
   // Multi mints and unmints
-  MultiMintCount = 72,
-  MultiMintBaseLimit = 74,
-  MultiMintRelic = 76,
+  MultiMintCount = 82,
+  MultiMintBaseLimit = 84,
+  MultiMintRelic = 86,
+  // Boost
+  RareChance = 90,
+  RareMultiplier = 92,
+  UltraRareChance = 94,
+  UltraRareMultiplier = 96,
   // Swap
   SwapInput = 30,
   SwapOutput = 32,
@@ -39,6 +45,9 @@ pub(super) enum Tag {
   Reward = 54,
   // Chest
   Syndicate = 60,
+  // Manifest
+  LeftParent = 102,
+  RightParent = 104,
 
   #[allow(unused)]
   Cenotaph = 126,

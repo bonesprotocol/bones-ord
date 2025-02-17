@@ -2,6 +2,8 @@ use super::*;
 
 #[derive(Default, Serialize, Deserialize, Debug, PartialEq, Copy, Clone, Eq)]
 pub struct Enshrining {
+  /// potential mint boosts
+  pub boost_terms: Option<BoostTerms>,
   /// symbol attached to this Relic
   pub symbol: Option<char>,
   /// supply of quote tokens available for Syndicate rewards
@@ -15,7 +17,7 @@ pub struct Enshrining {
 #[derive(Default, Serialize, Deserialize, Debug, PartialEq, Copy, Clone, Eq)]
 pub struct MultiMint {
   /// Number of mints to perform (always positive).
-  pub count: u32,
+  pub count: u8,
   /// When minting, the maximum base token to spend; when unminting, the minimum base token to receive.
   pub base_limit: u128,
   /// True if this operation is an unmint (i.e. a revert), false for a mint.
@@ -45,7 +47,7 @@ impl PriceModel {
   }
 
   /// Computes the total price for `count` mints starting at mint index `start`.
-  pub fn compute_total_price(&self, start: u128, count: u32) -> Option<u128> {
+  pub fn compute_total_price(&self, start: u128, count: u8) -> Option<u128> {
     match *self {
       PriceModel::Fixed(price) => price.checked_mul(count as u128),
       PriceModel::Formula { .. } => {
@@ -68,11 +70,14 @@ pub struct MintTerms {
   /// amount of quote tokens minted per mint
   pub amount: Option<u128>,
   /// maximum number of mints allowed
+  /// if mint is boosted, this is only a soft cap
   pub cap: Option<u128>,
+  /// if set, only allow minters from manifest (and parent manifests)
+  pub manifest: Option<RelicId>,
   /// Maximum number of mints allowed in one block
-  pub max_per_block: Option<u16>,
+  pub max_per_block: Option<u32>,
   /// Maximum number of mints allowed in one transaction
-  pub max_per_tx: Option<u32>,
+  pub max_per_tx: Option<u8>,
   /// Only if set, tokens can be unminted (until max_unmints reached)
   pub max_unmints: Option<u32>,
   /// note: must be set, except for RELIC, which does not have a price
@@ -84,6 +89,19 @@ pub struct MintTerms {
   pub swap_height: Option<u64>,
 }
 
+/// If set give people the chance to get boosts (multipliers) on their mints
+#[derive(Default, Serialize, Deserialize, Debug, PartialEq, Copy, Clone, Eq)]
+pub struct BoostTerms {
+  // chance to get a rare mint in ppm
+  pub rare_chance: Option<u32>,
+  // e.g. if set to 10 -> rare mint = 10x mint amount
+  pub rare_multiplier: Option<u16>,
+  // chance to get an ultra rare mint in ppm
+  pub ultra_rare_chance: Option<u32>,
+  // e.g. if set to 10 -> rare mint = 100x mint amount
+  pub ultra_rare_multiplier: Option<u16>,
+}
+
 impl MintTerms {
   // Compute price using the current mint count (x)
   pub fn compute_price(&self, x: u128) -> Option<u128> {
@@ -91,7 +109,7 @@ impl MintTerms {
   }
 
   /// Computes the total price for `count` mints starting at mint index `start`.
-  pub fn compute_total_price(&self, start: u128, count: u32) -> Option<u128> {
+  pub fn compute_total_price(&self, start: u128, count: u8) -> Option<u128> {
     self.price.and_then(|p| p.compute_total_price(start, count))
   }
 }
@@ -101,6 +119,7 @@ impl Enshrining {
   pub const DIVISIBILITY: u8 = 8;
   pub const MAX_SPACERS: u32 = 0b00000111_11111111_11111111_11111111;
 
+  /// Does not include potential boosts
   pub fn max_supply(&self) -> Option<u128> {
     let subsidy = self.subsidy.unwrap_or_default();
     let amount = self

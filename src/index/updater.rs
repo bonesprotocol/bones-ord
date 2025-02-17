@@ -580,9 +580,16 @@ impl<'index> Updater<'_> {
       let mut syndicate_to_chest_sequence_number =
         wtx.open_multimap_table(SYNDICATE_TO_CHEST_SEQUENCE_NUMBER)?;
       let mut relic_to_sequence_number = wtx.open_table(RELIC_TO_SEQUENCE_NUMBER)?;
+      let mut manifest_id_to_manifest = wtx.open_table(MANIFEST_ID_TO_MANIFEST)?;
+      let mut manifested_minter_to_mints_left = wtx.open_table(MANIFESTED_MINTER_TO_MINTS_LEFT)?;
 
       let relics = statistic_to_count
         .get(&Statistic::Relics.into())?
+        .map(|x| x.value())
+        .unwrap_or(0);
+
+      let manifests = statistic_to_count
+        .get(&Statistic::Manifests.into())?
         .map(|x| x.value())
         .unwrap_or(0);
 
@@ -597,6 +604,9 @@ impl<'index> Updater<'_> {
         id_to_entry: &mut relic_id_to_relic_entry,
         id_to_syndicate: &mut syndicate_id_to_syndicate_entry,
         inscription_id_to_sequence_number: &inscription_id_to_sequence_number,
+        manifest_id_to_manifest: &mut manifest_id_to_manifest,
+        manifested_minter_to_mints_left: &mut manifested_minter_to_mints_left,
+        manifests,
         mints_in_block: HashMap::new(),
         outpoint_to_balances: &mut outpoint_to_relic_balances,
         relic_owner_to_claimable: &mut relic_owner_to_claimable,

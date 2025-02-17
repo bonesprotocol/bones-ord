@@ -38,20 +38,17 @@ pub enum EventInfo {
     #[serde(rename = "bone_id")]
     relic_id: RelicId,
     amount: u128,
+    multiplier: u32,
+    is_unmint: bool,
   },
   #[serde(rename = "BoneMultiMinted")]
   RelicMultiMinted {
     #[serde(rename = "bone_id")]
     relic_id: RelicId,
     amount: u128,
-    num_mints: u32,
+    num_mints: u8,
     base_limit: u128,
-  },
-  #[serde(rename = "BoneUnminted")]
-  RelicUnminted {
-    #[serde(rename = "bone_id")]
-    relic_id: RelicId,
-    amount: u128,
+    is_unmint: bool,
   },
   #[serde(rename = "BoneSpent")]
   RelicSpent {
@@ -125,6 +122,7 @@ pub enum RelicOperation {
   Encase,
   Release,
   Claim,
+  Manifest,
 }
 
 impl Display for Event {
@@ -168,7 +166,6 @@ impl Event {
     matches!(
       self.info,
       EventInfo::RelicMinted { .. }
-        | EventInfo::RelicUnminted { .. }
         | EventInfo::RelicBurned { .. }
         | EventInfo::RelicSpent { .. }
         | EventInfo::RelicReceived { .. }
@@ -181,7 +178,6 @@ impl Event {
     match self.info {
       EventInfo::RelicEnshrined { relic_id, .. } => Some(relic_id),
       EventInfo::RelicMinted { relic_id, .. } => Some(relic_id),
-      EventInfo::RelicUnminted { relic_id, .. } => Some(relic_id),
       EventInfo::RelicBurned { relic_id, .. } => Some(relic_id),
       EventInfo::RelicSpent { relic_id, .. } => Some(relic_id),
       EventInfo::RelicReceived { relic_id, .. } => Some(relic_id),

@@ -130,6 +130,23 @@ impl Inscription {
     ciborium::from_reader(Cursor::new(self.metadata.as_ref()?)).ok()
   }
 
+  pub(crate) fn metadata_field(&self, field: &str) -> Option<String> {
+    self.metadata().and_then(|meta| {
+      if let Value::Map(map) = meta {
+        for (key, value) in map {
+          if let Value::Text(ref key_str) = key {
+            if key_str == field {
+              if let Value::Text(ref val_str) = value {
+                return Some(val_str.clone());
+              }
+            }
+          }
+        }
+      }
+      None
+    })
+  }
+
   pub(crate) fn parents(&self) -> Vec<InscriptionId> {
     self
       .parents
