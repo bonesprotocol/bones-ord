@@ -120,11 +120,11 @@ impl Keepsake {
       subsidy: get_non_zero(Tag::Subsidy, &mut fields),
       mint_terms: Flag::MintTerms.take(&mut flags).then(|| MintTerms {
         amount: Tag::Amount.take(&mut fields, |[amount]| Some(amount)),
+        block_cap: Tag::BlockCap.take(&mut fields, |[val]| u32::try_from(val).ok()),
         cap: Tag::Cap.take(&mut fields, |[cap]| Some(cap)),
         manifest: Tag::Manifest.take(&mut fields, |[block, tx]| {
           RelicId::new(block.try_into().ok()?, tx.try_into().ok()?)
         }),
-        max_per_block: Tag::MaxPerBlock.take(&mut fields, |[val]| u32::try_from(val).ok()),
         max_per_tx: Tag::MaxPerTx.take(&mut fields, |[val]| u8::try_from(val).ok()),
         max_unmints: Tag::MaxUnmints.take(&mut fields, |[val]| u32::try_from(val).ok()),
         price: Tag::Price
@@ -240,8 +240,8 @@ impl Keepsake {
               }
             }
           }
-          // If max_per_block is set, check that (max_per_block as u128) × amount doesn't overflow.
-          if let Some(max_block) = terms.max_per_block {
+          // If block_cap is set, check that block_cap × amount doesn't overflow.
+          if let Some(max_block) = terms.block_cap {
             if let Some(amount) = terms.amount {
               if (max_block as u128).checked_mul(amount).is_none() {
                 return false;
@@ -402,7 +402,7 @@ impl Keepsake {
       if let Some(terms) = enshrining.mint_terms {
         Flag::MintTerms.set(&mut flags);
         Tag::Amount.encode_option(terms.amount, &mut payload);
-        Tag::MaxPerBlock.encode_option(terms.max_per_block, &mut payload);
+        Tag::BlockCap.encode_option(terms.block_cap, &mut payload);
         Tag::MaxPerTx.encode_option(terms.max_per_tx, &mut payload);
         Tag::Cap.encode_option(terms.cap, &mut payload);
         if let Some(price_model) = terms.price {

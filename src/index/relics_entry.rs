@@ -331,13 +331,13 @@ impl RelicEntry {
 }
 
 type MintTermsValue = (
-  Option<u128>, // amount
-  Option<u128>, // cap
+  Option<u128>,         // amount
+  Option<u32>,          // block cap
+  Option<u128>,         // cap
   Option<RelicIdValue>, // manifest
-  Option<u32>,  // max per block
-  Option<u8>,   // max per tx
-  Option<u32>,  // max unmints
-  Option<u128>, // stored price:
+  Option<u8>,           // max per tx
+  Option<u32>,          // max unmints
+  Option<u128>,         // stored price:
   //   - Some(n) with n != 0 represents PriceModel::Fixed(n)
   //   - Some(0) indicates formula pricing (with a, b, c below)
   Option<u128>, // formula_a (for formula pricing)
@@ -353,9 +353,9 @@ impl Entry for MintTerms {
   fn load(
     (
       amount,
+      block_cap,
       cap,
       manifest,
-      max_per_block,
       max_per_tx,
       max_unmints,
       price_type,
@@ -379,9 +379,9 @@ impl Entry for MintTerms {
     };
     Self {
       amount,
+      block_cap,
       cap,
       manifest: manifest.map(RelicId::load),
-      max_per_block,
       max_per_tx,
       max_unmints,
       price,
@@ -398,9 +398,9 @@ impl Entry for MintTerms {
     };
     (
       self.amount,
+      self.block_cap,
       self.cap,
       self.manifest.map(RelicId::store),
-      self.max_per_block,
       self.max_per_tx,
       self.max_unmints,
       price_type,
@@ -598,9 +598,9 @@ mod tests {
       owner_sequence_number: Some(123),
       mint_terms: Some(MintTerms {
         amount: Some(4),
+        block_cap: None,
         cap: Some(1),
         max_unmints: None,
-        max_per_block: None,
         max_per_tx: None,
         price: Some(8),
         seed: Some(22),

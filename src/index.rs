@@ -1,3 +1,4 @@
+use crate::index::manfest_entry::ManifestedMinterValue;
 use {
   self::{
     entry::{
@@ -45,7 +46,6 @@ use {
   std::sync::atomic::{self, AtomicBool},
   url::Url,
 };
-use crate::index::manfest_entry::ManifestedMinterValue;
 
 mod chest_entry;
 pub(crate) mod entry;
@@ -396,10 +396,10 @@ impl Index {
                 mint_terms: Some(MintTerms {
                   // mint amount per burned bonestone = ~21M total supply
                   amount: Some(572_000_000),
+                  block_cap: None,
                   // total amount of bonestone delegate inscriptions
                   cap: Some(3_670_709),
                   manifest: None,
-                  max_per_block: None,
                   max_per_tx: None,
                   max_unmints: None,
                   price: None,

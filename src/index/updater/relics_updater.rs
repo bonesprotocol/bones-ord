@@ -1,3 +1,4 @@
+use crate::index::manfest_entry::ManifestedMinter;
 use {
   super::*,
   crate::{
@@ -17,7 +18,6 @@ use {
     },
   },
 };
-use crate::index::manfest_entry::ManifestedMinter;
 
 pub(super) struct RelicUpdater<'a, 'tx, 'index, 'emitter> {
   pub(super) block_time: u32,
@@ -564,7 +564,9 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
     let inscription_entries = self.tx_inscriptions(txid, tx)?;
     if let Some(inscription_entry) = inscription_entries.into_iter().find(|entry| {
       if let Ok(Some(inscription)) = self.index.get_inscription_by_id(entry.id) {
-        inscription.content_type().map_or(false, |ct| ct.starts_with("text/csv"))
+        inscription
+          .content_type()
+          .map_or(false, |ct| ct.starts_with("text/csv"))
       } else {
         false
       }
@@ -607,7 +609,9 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
         .into_body()
         .map(|bytes| String::from_utf8_lossy(&bytes).to_string())
       {
-        let mut rdr = csv::ReaderBuilder::new().has_headers(false).from_reader(content_str.as_bytes());
+        let mut rdr = csv::ReaderBuilder::new()
+          .has_headers(false)
+          .from_reader(content_str.as_bytes());
         let validated_minters = rdr
           .records()
           .map(|result| {
@@ -630,7 +634,9 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
           Ok(minters) if !minters.is_empty() => {
             let number = self.manifests;
             self.manifests += 1;
-            self.statistic_to_count.insert(&Statistic::Manifests.into(), self.manifests)?;
+            self
+              .statistic_to_count
+              .insert(&Statistic::Manifests.into(), self.manifests)?;
             let manifest_entry = ManifestEntry {
               left_parent: manifest.left_parent,
               right_parent: manifest.right_parent,
@@ -638,12 +644,16 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
               inscription_number: inscription_entry.sequence_number,
               title: Some(title.to_string()),
             };
-            self.manifest_id_to_manifest.insert(manifest_id.store(), manifest_entry.store())?;
+            self
+              .manifest_id_to_manifest
+              .insert(manifest_id.store(), manifest_entry.store())?;
             let creation_fee = Lot(manifest.creation_fee());
             balances.remove(RELIC_ID, creation_fee);
             balances.burn(RELIC_ID, creation_fee);
             for (minter, count) in minters {
-              self.manifested_minter_to_mints_left.insert(minter.store(), count)?;
+              self
+                .manifested_minter_to_mints_left
+                .insert(minter.store(), count)?;
             }
           }
           Ok(_) => { /* No valid minters; skip manifest storage. */ }
@@ -1323,10 +1333,10 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
 
     // Check per-block mint limit if set.
     if let Some(terms) = relic_entry.mint_terms {
-      if let Some(max_per_block) = terms.max_per_block {
+      if let Some(block_cap) = terms.block_cap {
         let count = self.mints_in_block.entry(id).or_insert(0);
-        if *count >= max_per_block {
-          return Ok(Err(RelicError::MintBlockCapExceeded(max_per_block)));
+        if *count >= block_cap {
+          return Ok(Err(RelicError::MintBlockCapExceeded(block_cap)));
         }
       }
     }
@@ -1347,7 +1357,7 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
 
     // Increment per-block mint counter.
     if let Some(terms) = relic_entry.mint_terms {
-      if terms.max_per_block.is_some() {
+      if terms.block_cap.is_some() {
         let count = self.mints_in_block.entry(id).or_insert(0);
         *count += 1;
       }
@@ -1405,12 +1415,12 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
       return Ok(Err(RelicError::RelicNotFound(id)));
     };
 
-    // Enforce max_per_block for multi-mint.
+    // Enforce block_cap for multi-mint.
     if let Some(terms) = relic_entry.mint_terms {
-      if let Some(max_per_block) = terms.max_per_block {
+      if let Some(block_cap) = terms.block_cap {
         let current = self.mints_in_block.get(&id).cloned().unwrap_or(0);
-        if current.saturating_add(num_mints as u32) > max_per_block {
-          return Ok(Err(RelicError::MintBlockCapExceeded(max_per_block)));
+        if current.saturating_add(num_mints as u32) > block_cap {
+          return Ok(Err(RelicError::MintBlockCapExceeded(block_cap)));
         }
       }
     }
@@ -1435,7 +1445,7 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
 
     // Update per-block mint counter.
     if let Some(terms) = relic_entry.mint_terms {
-      if terms.max_per_block.is_some() {
+      if terms.block_cap.is_some() {
         let counter = self.mints_in_block.entry(id).or_insert(0);
         *counter = counter.saturating_add(boosted_results.len() as u32);
       }

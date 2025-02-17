@@ -40,7 +40,7 @@ pub enum RelicError {
   ChestNotFound,
   ChestLocked(u64),
   NoClaimableBalance,
-  ManifestValidation
+  ManifestValidation,
 }
 
 impl Display for RelicError {

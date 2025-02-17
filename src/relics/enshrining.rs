@@ -69,13 +69,13 @@ impl PriceModel {
 pub struct MintTerms {
   /// amount of quote tokens minted per mint
   pub amount: Option<u128>,
+  /// Maximum number of mints allowed in one block
+  pub block_cap: Option<u32>,
   /// maximum number of mints allowed
   /// if mint is boosted, this is only a soft cap
   pub cap: Option<u128>,
   /// if set, only allow minters from manifest (and parent manifests)
   pub manifest: Option<RelicId>,
-  /// Maximum number of mints allowed in one block
-  pub max_per_block: Option<u32>,
   /// Maximum number of mints allowed in one transaction
   pub max_per_tx: Option<u8>,
   /// Only if set, tokens can be unminted (until max_unmints reached)
