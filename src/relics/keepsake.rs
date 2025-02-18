@@ -124,7 +124,7 @@ impl Keepsake {
         block_cap: Tag::BlockCap.take(&mut fields, |[val]| u32::try_from(val).ok()),
         cap: Tag::Cap.take(&mut fields, |[cap]| Some(cap)),
         manifest: Tag::Manifest.take(&mut fields, |[block, tx]| {
-          RelicId::new(block.try_into().ok()?, tx.try_into().ok()?)
+          ManifestId::new(block.try_into().ok()?, tx.try_into().ok()?)
         }),
         tx_cap: Tag::TxCap.take(&mut fields, |[val]| u8::try_from(val).ok()),
         max_unmints: Tag::MaxUnmints.take(&mut fields, |[val]| u32::try_from(val).ok()),
@@ -227,63 +227,63 @@ impl Keepsake {
           if cap == 0 {
             return false;
           }
-          // Check that the total mint supply (cap × amount) does not overflow
           if let Some(amount) = terms.amount {
             if cap.checked_mul(amount).is_none() {
               return false;
             }
           }
-          // If tx_cap is set, check that tx_cap × amount doesn't overflow.
-          if let Some(max_tx) = terms.tx_cap {
-            if let Some(amount) = terms.amount {
-              if (max_tx as u128).checked_mul(amount).is_none() {
-                return false;
-              }
-            }
-          }
-          // If block_cap is set, check that block_cap × amount doesn't overflow.
-          if let Some(max_block) = terms.block_cap {
-            if let Some(amount) = terms.amount {
-              if (max_block as u128).checked_mul(amount).is_none() {
-                return false;
-              }
-            }
-          }
+          // Check pricing.
           match terms.price {
             Some(PriceModel::Fixed(price)) => {
-              // For fixed pricing, check multiplication doesn't overflow.
-              cap.checked_mul(price).is_some()
+              if cap.checked_mul(price).is_none() {
+                return false;
+              }
             }
             Some(PriceModel::Formula { a, b, c }) => {
-              // For formula pricing:
-              //   • c must be nonzero (avoid division by zero)
-              //   • a >= b / c (avoid underflow at x=0)
-              //   • cap must not exceed 1,000,000
-              c > 0 && (b / c) <= a && cap <= 1_000_000
+              if !(c > 0 && (b / c) <= a && cap <= 1_000_000) {
+                return false;
+              }
             }
-            None => false,
+            None => return false,
           }
+          // Ensure cap >= block_cap >= tx_cap.
+          if let Some(block_cap) = terms.block_cap {
+            if cap < block_cap as u128 {
+              return false;
+            }
+            if let Some(tx_cap) = terms.tx_cap {
+              if block_cap < tx_cap as u32 {
+                return false;
+              }
+            }
+          } else if terms.tx_cap.is_some() {
+            return false;
+          }
+          true
         } else {
           false
         }
       });
       let boost_valid = enshrining.boost_terms.map_or(true, |boost| {
-        let rare_valid = if boost.rare_chance.is_some() || boost.rare_multiplier.is_some() {
-          if let (Some(rc), Some(rm)) = (boost.rare_chance, boost.rare_multiplier) {
-            rc != 0 && rm > 1
-          } else {
-            false
-          }
+        let rare_valid = if let (Some(rc), Some(rm)) = (boost.rare_chance, boost.rare_multiplier) {
+          rc != 0 && rm > 1
         } else {
-          true
+          false
         };
         let ultra_valid =
-          if boost.ultra_rare_chance.is_some() || boost.ultra_rare_multiplier.is_some() {
-            if let (Some(urc), Some(urm)) = (boost.ultra_rare_chance, boost.ultra_rare_multiplier) {
-              urc != 0 && urm > 1
-            } else {
-              false
-            }
+          if let (Some(urc), Some(urm)) = (boost.ultra_rare_chance, boost.ultra_rare_multiplier) {
+            urc != 0 && urm > 1
+          } else {
+            false
+          };
+        // Enforce ultra rare chance < rare chance and ultra rare multiplier > rare multiplier.
+        let order_valid =
+          if let (Some(rc), Some(urc)) = (boost.rare_chance, boost.ultra_rare_chance) {
+            urc < rc
+          } else {
+            true
+          } && if let (Some(rm), Some(urm)) = (boost.rare_multiplier, boost.ultra_rare_multiplier) {
+            urm > rm
           } else {
             true
           };
@@ -292,15 +292,14 @@ impl Keepsake {
           .as_ref()
           .and_then(|terms| terms.amount)
           .map_or(true, |amount| {
-            let rare_mul_valid = boost
+            boost
               .rare_multiplier
-              .map_or(true, |rm| amount.checked_mul(rm as u128).is_some());
-            let ultra_mul_valid = boost
-              .ultra_rare_multiplier
-              .map_or(true, |urm| amount.checked_mul(urm as u128).is_some());
-            rare_mul_valid && ultra_mul_valid
+              .map_or(true, |rm| amount.checked_mul(rm as u128).is_some())
+              && boost
+                .ultra_rare_multiplier
+                .map_or(true, |urm| amount.checked_mul(urm as u128).is_some())
           });
-        rare_valid && ultra_valid && multiplier_valid
+        rare_valid && ultra_valid && order_valid && multiplier_valid
       });
       if !boost_valid || !terms_valid || enshrining.max_supply().is_none() {
         flaw.get_or_insert(RelicFlaw::InvalidEnshrining);

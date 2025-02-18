@@ -77,7 +77,7 @@ pub struct MintTerms {
   /// if mint is boosted, this is only a soft cap
   pub cap: Option<u128>,
   /// if set, only allow minters from manifest (and parent manifests)
-  pub manifest: Option<RelicId>,
+  pub manifest: Option<ManifestId>,
   /// Only if set, tokens can be unminted (until max_unmints reached)
   pub max_unmints: Option<u32>,
   /// note: must be set, except for RELIC, which does not have a price
@@ -121,7 +121,7 @@ impl Enshrining {
   pub const DIVISIBILITY: u8 = 8;
   pub const MAX_SPACERS: u32 = 0b00000111_11111111_11111111_11111111;
 
-  /// Does not include potential boosts
+  /// Caution: Does not include potential boosts
   pub fn max_supply(&self) -> Option<u128> {
     let subsidy = self.subsidy.unwrap_or_default();
     let amount = self

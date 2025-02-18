@@ -1,4 +1,3 @@
-use crate::index::manfest_entry::ManifestedMinterValue;
 use {
   self::{
     entry::{
@@ -14,17 +13,17 @@ use {
     index::{
       chest_entry::ChestEntryValue,
       event::Event,
-      manfest_entry::ManifestEntryValue,
+      manifest_entry::{ManifestIdValue, ManifestEntryValue, ManifestedMinterValue},
       relics_entry::{
-        RelicEntry, RelicEntryValue, RelicIdValue, RelicOwner, RelicOwnerValue, RelicState,
-        SpacedRelicValue,
+        RelicEntry, RelicEntryValue, RelicIdValue, RelicOwner,
+        RelicOwnerValue as MinterValue, RelicOwnerValue, RelicState, SpacedRelicValue,
       },
       syndicate_entry::{SyndicateEntry, SyndicateEntryValue, SyndicateIdValue},
     },
     inscription::ParsedInscription,
     relics::{
-      Enshrining, MintTerms, Relic, RelicError, RelicId, SpacedRelic, SyndicateId, RELIC_ID,
-      RELIC_NAME,
+      Enshrining, ManifestId, MintTerms, Relic, RelicError, RelicId, SpacedRelic, SyndicateId,
+      RELIC_ID, RELIC_NAME,
     },
     sat::Sat,
     sat_point::SatPoint,
@@ -52,7 +51,7 @@ pub(crate) mod entry;
 pub(crate) mod event;
 mod fetcher;
 mod lot;
-mod manfest_entry;
+mod manifest_entry;
 pub(crate) mod relics_entry;
 mod reorg;
 mod rtx;
@@ -111,8 +110,7 @@ define_multimap_table! { TRANSACTION_ID_TO_EVENTS, &TxidValue, Event }
 define_table! { HEIGHT_TO_LAST_SEQUENCE_NUMBER, u32, u32 }
 define_table! { SEQUENCE_NUMBER_TO_BONESTONE_BLOCK_HEIGHT, u32, u32 }
 define_multimap_table! { SEQUENCE_NUMBER_TO_CHILDREN, u32, u32 }
-// using RelicIdValue type for manifest ID (block + tx index)
-define_table! { MANIFEST_ID_TO_MANIFEST, RelicIdValue, ManifestEntryValue }
+define_table! { MANIFEST_ID_TO_MANIFEST, ManifestIdValue, ManifestEntryValue }
 define_table! { MANIFESTED_MINTER_TO_MINTS_LEFT, ManifestedMinterValue, u8 }
 
 pub(crate) struct Index {

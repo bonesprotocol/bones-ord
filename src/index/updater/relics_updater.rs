@@ -1,4 +1,3 @@
-use crate::index::manfest_entry::ManifestedMinter;
 use {
   super::*,
   crate::{
@@ -7,7 +6,7 @@ use {
       chest_entry::ChestEntry,
       event::{EventEmitter, EventInfo, RelicOperation},
       lot::Lot,
-      manfest_entry::{ManifestEntry, ManifestedMinterValue},
+      manifest_entry::{ManifestEntry, Minter, ManifestedMinter, ManifestedMinterValue},
       relics_entry::{RelicEntry, RelicOwner, RelicState},
       syndicate_entry::SyndicateEntry,
       updater::relics_balance::RelicsBalance,
@@ -30,8 +29,7 @@ pub(super) struct RelicUpdater<'a, 'tx, 'index, 'emitter> {
   pub(super) id_to_entry: &'a mut Table<'tx, RelicIdValue, RelicEntryValue>,
   pub(super) id_to_syndicate: &'a mut Table<'tx, SyndicateIdValue, SyndicateEntryValue>,
   pub(super) inscription_id_to_sequence_number: &'a Table<'tx, &'static InscriptionIdValue, u32>,
-  // using RelicIdValue type for manifest ID (block + tx index)
-  pub(super) manifest_id_to_manifest: &'a mut Table<'tx, RelicIdValue, ManifestEntryValue>,
+  pub(super) manifest_id_to_manifest: &'a mut Table<'tx, ManifestIdValue, ManifestEntryValue>,
   pub(super) manifested_minter_to_mints_left: &'a mut Table<'tx, ManifestedMinterValue, u8>,
   pub(super) manifests: u64,
   pub(super) mints_in_block: HashMap<RelicId, u32>,
@@ -576,7 +574,7 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
         .index
         .get_inscription_by_id(inscription_entry.id)?
         .ok_or_else(|| anyhow!("inscription {} not found", inscription_entry.id))?;
-      let manifest_id = RelicId {
+      let manifest_id = ManifestId {
         block: self.height.into(),
         tx: tx_index,
       };
@@ -624,7 +622,7 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
             let num_mints: u8 = record[1].parse()?;
             Ok((
               ManifestedMinter {
-                owner: RelicOwner(address.script_pubkey().script_hash()),
+                minter: Minter(address.script_pubkey().script_hash()),
                 manifest: manifest_id.clone(),
               },
               num_mints,
