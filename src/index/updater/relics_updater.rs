@@ -17,6 +17,7 @@ use {
     },
   },
 };
+use crate::relics::MAX_MANIFEST_TREE_DEPTH;
 
 pub(super) struct RelicUpdater<'a, 'tx, 'index, 'emitter> {
   pub(super) block_time: u32,
@@ -552,6 +553,38 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
     Ok(())
   }
 
+  fn check_manifest_ancestry(
+    &self,
+    parent: &ManifestId,
+    new_manifest_id: &ManifestId,
+    depth: u8,
+  ) -> Result<u8> {
+    if depth >= MAX_MANIFEST_TREE_DEPTH {
+      return Err(anyhow!("Manifest tree depth exceeds maximum allowed depth"));
+    }
+    // Cycle detection: if the parent equals the new manifest, a circular reference is found.
+    if parent == new_manifest_id {
+      return Err(anyhow!(
+        "Manifest cannot reference itself or create a cycle in its ancestry"
+      ));
+    }
+    if let Some(parent_entry_val) = self.manifest_id_to_manifest.get(&parent.store())? {
+      let parent_entry = ManifestEntry::load(parent_entry_val.value().clone());
+      let mut max_depth = depth;
+      if let Some(left) = parent_entry.left_parent {
+        let left_depth = self.check_manifest_ancestry(&left, new_manifest_id, depth + 1)?;
+        max_depth = max_depth.max(left_depth);
+      }
+      if let Some(right) = parent_entry.right_parent {
+        let right_depth = self.check_manifest_ancestry(&right, new_manifest_id, depth + 1)?;
+        max_depth = max_depth.max(right_depth);
+      }
+      Ok(max_depth)
+    } else {
+      Ok(depth)
+    }
+  }
+
   fn handle_manifest(
     &mut self,
     txid: Txid,
@@ -603,6 +636,35 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
         )?;
         return Ok(());
       }
+
+      // Validate manifest tree (if any)
+      if let Some(ref left_parent) = manifest.left_parent {
+        if let Err(err) = self.check_manifest_ancestry(left_parent, &manifest_id, 1) {
+          eprintln!("Manifest ancestry validation error (left parent): {err}");
+          self.event_emitter.emit(
+            txid,
+            EventInfo::RelicError {
+              operation: RelicOperation::Manifest,
+              error: RelicError::ManifestValidation,
+            },
+          )?;
+          return Ok(());
+        }
+      }
+      if let Some(ref right_parent) = manifest.right_parent {
+        if let Err(err) = self.check_manifest_ancestry(right_parent, &manifest_id, 1) {
+          eprintln!("Manifest ancestry validation error (right parent): {err}");
+          self.event_emitter.emit(
+            txid,
+            EventInfo::RelicError {
+              operation: RelicOperation::Manifest,
+              error: RelicError::ManifestValidation,
+            },
+          )?;
+          return Ok(());
+        }
+      }
+
       if let Some(content_str) = inscription
         .clone()
         .into_body()
