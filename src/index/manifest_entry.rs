@@ -50,8 +50,8 @@ impl Entry for Minter {
 // Define the manifest entry value type.
 #[derive(Serialize, Deserialize, Debug, PartialEq)]
 pub struct ManifestEntry {
-  pub left_parent: Option<u128>,
-  pub right_parent: Option<u128>,
+  pub left_parent: Option<ManifestId>,
+  pub right_parent: Option<ManifestId>,
   pub number: u64,
   /// sequence number of the inscription which has the content of the manifest
   pub inscription_number: u32,
@@ -59,7 +59,7 @@ pub struct ManifestEntry {
 }
 
 // Storage alias.
-pub type ManifestEntryValue = (Option<u128>, Option<u128>, u64, u32, Option<String>);
+pub type ManifestEntryValue = (Option<ManifestIdValue>, Option<ManifestIdValue>, u64, u32, Option<String>);
 
 impl Entry for ManifestEntry {
   type Value = ManifestEntryValue;
@@ -67,8 +67,8 @@ impl Entry for ManifestEntry {
   fn load(value: Self::Value) -> Self {
     let (left_parent, right_parent, number, inscription_number, title) = value;
     Self {
-      left_parent,
-      right_parent,
+      left_parent: left_parent.map(ManifestId::load),
+      right_parent: left_parent.map(ManifestId::load),
       number,
       inscription_number,
       title,
@@ -77,8 +77,8 @@ impl Entry for ManifestEntry {
 
   fn store(self) -> Self::Value {
     (
-      self.left_parent,
-      self.right_parent,
+      self.left_parent.map(ManifestId::store),
+      self.right_parent.map(ManifestId::store),
       self.number,
       self.inscription_number,
       self.title,

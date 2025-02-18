@@ -101,9 +101,12 @@ impl Keepsake {
     let release = Flag::Release.take(&mut flags);
 
     let manifest = Flag::Manifest.take(&mut flags).then(|| Manifest {
-      // Try to take the left/right parent values from the fields.
-      left_parent: Tag::LeftParent.take(&mut fields, |[val]| Some(val)),
-      right_parent: Tag::RightParent.take(&mut fields, |[val]| Some(val)),
+      left_parent: Tag::LeftParent.take(&mut fields, |[block, tx]| {
+        ManifestId::new(block.try_into().ok()?, tx.try_into().ok()?)
+      }),
+      right_parent: Tag::RightParent.take(&mut fields, |[block, tx]| {
+        ManifestId::new(block.try_into().ok()?, tx.try_into().ok()?)
+      }),
     });
 
     let enshrining = Flag::Enshrining.take(&mut flags).then(|| Enshrining {
@@ -377,8 +380,12 @@ impl Keepsake {
 
     if let Some(manifest) = self.manifest {
       Flag::Manifest.set(&mut flags);
-      Tag::LeftParent.encode_option(manifest.left_parent, &mut payload);
-      Tag::RightParent.encode_option(manifest.right_parent, &mut payload);
+      if let Some(left) = manifest.left_parent {
+        Tag::LeftParent.encode([left.block.into(), left.tx.into()], &mut payload);
+      }
+      if let Some(right) = manifest.right_parent {
+        Tag::RightParent.encode([right.block.into(), right.tx.into()], &mut payload);
+      }
     }
 
     if let Some(enshrining) = self.enshrining {

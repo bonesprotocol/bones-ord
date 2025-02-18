@@ -3,9 +3,9 @@ use super::*;
 #[derive(Default, Serialize, Deserialize, Debug, PartialEq, Copy, Clone, Eq)]
 pub struct Manifest {
   /// used to create a manifest tree
-  pub left_parent: Option<u128>,
+  pub left_parent: Option<ManifestId>,
   /// used to create a manifest tree
-  pub right_parent: Option<u128>,
+  pub right_parent: Option<ManifestId>,
 }
 
 impl Manifest {
