@@ -6,18 +6,22 @@ use {
       chest_entry::ChestEntry,
       event::{EventEmitter, EventInfo, RelicOperation},
       lot::Lot,
-      manifest_entry::{ManifestEntry, Minter, ManifestedMinter, ManifestedMinterValue},
+      manifest_entry::{ManifestEntry, ManifestedMinter, ManifestedMinterValue, Minter},
       relics_entry::{RelicEntry, RelicOwner, RelicState},
       syndicate_entry::SyndicateEntry,
       updater::relics_balance::RelicsBalance,
     },
     relics::{
       manifest::Manifest, BalanceDiff, BoostTerms, Enshrining, Keepsake, Pool, PoolSwap,
-      RelicArtifact, RelicError, SpacedRelic, Summoning, Swap, SwapDirection, RELIC_ID,
+      RelicArtifact, RelicError, SpacedRelic, Summoning, Swap, SwapDirection,
+      MAX_MANIFEST_TREE_DEPTH, RELIC_ID,
     },
   },
+  std::{
+    collections::hash_map::DefaultHasher,
+    hash::{Hash, Hasher},
+  },
 };
-use crate::relics::MAX_MANIFEST_TREE_DEPTH;
 
 pub(super) struct RelicUpdater<'a, 'tx, 'index, 'emitter> {
   pub(super) block_time: u32,
@@ -1352,29 +1356,43 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
     mint_index: u128,
     boost: &BoostTerms,
   ) -> u32 {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
     let mut hasher = DefaultHasher::new();
     relic_id.block.hash(&mut hasher);
     txid.hash(&mut hasher);
     mint_index.hash(&mut hasher);
     let seed = hasher.finish();
-    let rand_val = (seed % 1_000_000) as u32;
+    let rand_val = (seed % 1_000_000) as u32; // Random value between 0 and 999,999
+
     let mut multiplier = 1;
-    if let (Some(ur_chance), Some(ur_multiplier)) =
-      (boost.ultra_rare_chance, boost.ultra_rare_multiplier)
+
+    if let (Some(ur_chance), Some(ur_multiplier_cap)) =
+      (boost.ultra_rare_chance, boost.ultra_rare_multiplier_cap)
     {
       if rand_val < ur_chance {
-        multiplier = ur_multiplier as u32;
-      }
-    }
-    if multiplier == 1 {
-      if let (Some(r_chance), Some(r_multiplier)) = (boost.rare_chance, boost.rare_multiplier) {
-        if rand_val < r_chance {
-          multiplier = r_multiplier as u32;
+        // Ultra-rare case: multiplier between rare_multiplier_cap and ultra_rare_multiplier_cap
+        if let Some(r_multiplier_cap) = boost.rare_multiplier_cap {
+          let min = r_multiplier_cap as u32;
+          let max = ur_multiplier_cap as u32;
+          let range = max - min + 1; // Inclusive range
+          multiplier = min + (rand_val % range); // Random value in [min, max]
         }
       }
     }
+
+    if multiplier == 1 {
+      if let (Some(r_chance), Some(r_multiplier_cap)) =
+        (boost.rare_chance, boost.rare_multiplier_cap)
+      {
+        if rand_val < r_chance {
+          // Rare case: multiplier between 1 and rare_multiplier_cap
+          let min = 1;
+          let max = r_multiplier_cap as u32;
+          let range = max - min + 1; // Inclusive range
+          multiplier = min + (rand_val % range); // Random value in [min, max]
+        }
+      }
+    }
+
     multiplier
   }
 

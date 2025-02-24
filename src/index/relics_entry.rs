@@ -427,17 +427,17 @@ impl Entry for BoostTerms {
   ) -> Self {
     Self {
       rare_chance,
-      rare_multiplier,
+      rare_multiplier_cap: rare_multiplier,
       ultra_rare_chance,
-      ultra_rare_multiplier,
+      ultra_rare_multiplier_cap: ultra_rare_multiplier,
     }
   }
   fn store(self) -> Self::Value {
     (
       self.rare_chance,
-      self.rare_multiplier,
+      self.rare_multiplier_cap,
       self.ultra_rare_chance,
-      self.ultra_rare_multiplier,
+      self.ultra_rare_multiplier_cap,
     )
   }
 }

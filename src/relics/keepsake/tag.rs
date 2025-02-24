@@ -27,9 +27,9 @@ pub(super) enum Tag {
   MultiMintRelic = 86,
   // Boost
   RareChance = 90,
-  RareMultiplier = 92,
+  RareMultiplierCap = 92,
   UltraRareChance = 94,
-  UltraRareMultiplier = 96,
+  UltraRareMultiplierCap = 96,
   // Swap
   SwapInput = 30,
   SwapOutput = 32,

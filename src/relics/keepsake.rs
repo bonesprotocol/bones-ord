@@ -112,9 +112,10 @@ impl Keepsake {
     let enshrining = Flag::Enshrining.take(&mut flags).then(|| Enshrining {
       boost_terms: Flag::BoostTerms.take(&mut flags).then(|| BoostTerms {
         rare_chance: Tag::RareChance.take(&mut fields, |[val]| u32::try_from(val).ok()),
-        rare_multiplier: Tag::RareMultiplier.take(&mut fields, |[val]| u16::try_from(val).ok()),
+        rare_multiplier_cap: Tag::RareMultiplierCap
+          .take(&mut fields, |[val]| u16::try_from(val).ok()),
         ultra_rare_chance: Tag::UltraRareChance.take(&mut fields, |[val]| u32::try_from(val).ok()),
-        ultra_rare_multiplier: Tag::UltraRareMultiplier
+        ultra_rare_multiplier_cap: Tag::UltraRareMultiplierCap
           .take(&mut fields, |[val]| u16::try_from(val).ok()),
       }),
       fee: Tag::Fee.take(&mut fields, |[val]| u16::try_from(val).ok()),
@@ -268,24 +269,28 @@ impl Keepsake {
         }
       });
       let boost_valid = enshrining.boost_terms.map_or(true, |boost| {
-        let rare_valid = if let (Some(rc), Some(rm)) = (boost.rare_chance, boost.rare_multiplier) {
-          rc != 0 && rm > 1
-        } else {
-          false
-        };
-        let ultra_valid =
-          if let (Some(urc), Some(urm)) = (boost.ultra_rare_chance, boost.ultra_rare_multiplier) {
-            urc != 0 && urm > 1
+        let rare_valid =
+          if let (Some(rc), Some(rm)) = (boost.rare_chance, boost.rare_multiplier_cap) {
+            rc != 0 && rm > 1
           } else {
             false
           };
+        let ultra_valid = if let (Some(urc), Some(urm)) =
+          (boost.ultra_rare_chance, boost.ultra_rare_multiplier_cap)
+        {
+          urc != 0 && urm > 1
+        } else {
+          false
+        };
         // Enforce ultra rare chance < rare chance and ultra rare multiplier > rare multiplier.
         let order_valid =
           if let (Some(rc), Some(urc)) = (boost.rare_chance, boost.ultra_rare_chance) {
             urc < rc
           } else {
             true
-          } && if let (Some(rm), Some(urm)) = (boost.rare_multiplier, boost.ultra_rare_multiplier) {
+          } && if let (Some(rm), Some(urm)) =
+            (boost.rare_multiplier_cap, boost.ultra_rare_multiplier_cap)
+          {
             urm > rm
           } else {
             true
@@ -296,10 +301,10 @@ impl Keepsake {
           .and_then(|terms| terms.amount)
           .map_or(true, |amount| {
             boost
-              .rare_multiplier
+              .rare_multiplier_cap
               .map_or(true, |rm| amount.checked_mul(rm as u128).is_some())
               && boost
-                .ultra_rare_multiplier
+                .ultra_rare_multiplier_cap
                 .map_or(true, |urm| amount.checked_mul(urm as u128).is_some())
           });
         rare_valid && ultra_valid && order_valid && multiplier_valid
@@ -401,9 +406,9 @@ impl Keepsake {
       if let Some(boost) = enshrining.boost_terms {
         Flag::BoostTerms.set(&mut flags);
         Tag::RareChance.encode_option(boost.rare_chance, &mut payload);
-        Tag::RareMultiplier.encode_option(boost.rare_multiplier, &mut payload);
+        Tag::RareMultiplierCap.encode_option(boost.rare_multiplier_cap, &mut payload);
         Tag::UltraRareChance.encode_option(boost.ultra_rare_chance, &mut payload);
-        Tag::UltraRareMultiplier.encode_option(boost.ultra_rare_multiplier, &mut payload);
+        Tag::UltraRareMultiplierCap.encode_option(boost.ultra_rare_multiplier_cap, &mut payload);
       }
 
       if let Some(terms) = enshrining.mint_terms {

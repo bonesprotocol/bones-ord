@@ -59,7 +59,13 @@ pub struct ManifestEntry {
 }
 
 // Storage alias.
-pub type ManifestEntryValue = (Option<ManifestIdValue>, Option<ManifestIdValue>, u64, u32, Option<String>);
+pub type ManifestEntryValue = (
+  Option<ManifestIdValue>,
+  Option<ManifestIdValue>,
+  u64,
+  u32,
+  Option<String>,
+);
 
 impl Entry for ManifestEntry {
   type Value = ManifestEntryValue;

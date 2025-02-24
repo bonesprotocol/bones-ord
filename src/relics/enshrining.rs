@@ -96,12 +96,12 @@ pub struct MintTerms {
 pub struct BoostTerms {
   // chance to get a rare mint in ppm
   pub rare_chance: Option<u32>,
-  // e.g. if set to 10 -> rare mint = 10x mint amount
-  pub rare_multiplier: Option<u16>,
+  // e.g. if set to 10 -> rare mint = min. 1x mint amount, max 10x mint amount
+  pub rare_multiplier_cap: Option<u16>,
   // chance to get an ultra rare mint in ppm
   pub ultra_rare_chance: Option<u32>,
-  // e.g. if set to 10 -> rare mint = 100x mint amount
-  pub ultra_rare_multiplier: Option<u16>,
+  // e.g. if set to 20 and rare mint set to 10 -> min 10x mint amount, max 20x mint amount
+  pub ultra_rare_multiplier_cap: Option<u16>,
 }
 
 impl MintTerms {

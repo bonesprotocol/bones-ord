@@ -12,8 +12,8 @@ use {
 
 pub use {
   artifact::RelicArtifact, cenotaph::RelicCenotaph, enshrining::BoostTerms, enshrining::Enshrining,
-  enshrining::MintTerms, enshrining::PriceModel, flaw::RelicFlaw, keepsake::Keepsake, pile::Pile,
-  pool::*, relic::Relic, relic_error::RelicError, manifest_id::ManifestId,
+  enshrining::MintTerms, enshrining::PriceModel, flaw::RelicFlaw, keepsake::Keepsake,
+  manifest_id::ManifestId, pile::Pile, pool::*, relic::Relic, relic_error::RelicError,
   relic_id::RelicId as SyndicateId, relic_id::RelicId, spaced_relic::SpacedRelic,
   summoning::Summoning, swap::Swap, transfer::Transfer,
 };

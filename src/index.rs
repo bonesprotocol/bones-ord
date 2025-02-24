@@ -13,10 +13,10 @@ use {
     index::{
       chest_entry::ChestEntryValue,
       event::Event,
-      manifest_entry::{ManifestIdValue, ManifestEntryValue, ManifestedMinterValue},
+      manifest_entry::{ManifestEntryValue, ManifestIdValue, ManifestedMinterValue},
       relics_entry::{
-        RelicEntry, RelicEntryValue, RelicIdValue, RelicOwner,
-        RelicOwnerValue as MinterValue, RelicOwnerValue, RelicState, SpacedRelicValue,
+        RelicEntry, RelicEntryValue, RelicIdValue, RelicOwner, RelicOwnerValue as MinterValue,
+        RelicOwnerValue, RelicState, SpacedRelicValue,
       },
       syndicate_entry::{SyndicateEntry, SyndicateEntryValue, SyndicateIdValue},
     },
