@@ -152,7 +152,7 @@ pub fn spawn() -> Handle {
 #[derive(Clone)]
 pub struct TransactionTemplate<'a> {
   pub fee: u64,
-  pub inputs: &'a [(usize, usize, usize, Witness)],
+  pub inputs: &'a [(usize, usize, usize, Script)],
   pub input_outpoints: &'a [OutPoint],
   pub op_return: Option<Script>,
   pub op_return_index: Option<usize>,

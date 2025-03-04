@@ -224,9 +224,8 @@ impl Api for Server {
   fn get_block(
     &self,
     block_hash: BlockHash,
-    verbosity: u64,
+    verbosity: bool,
   ) -> Result<String, jsonrpc_core::Error> {
-    assert_eq!(verbosity, 0, "Verbosity level {verbosity} is unsupported");
     match self.state().blocks.get(&block_hash) {
       Some(block) => Ok(hex::encode(serialize(block))),
       None => Err(Self::not_found()),
