@@ -121,23 +121,20 @@ impl Enshrining {
   pub const DIVISIBILITY: u8 = 8;
   pub const MAX_SPACERS: u32 = 0b00000111_11111111_11111111_11111111;
 
-  /// Caution: Does not include potential boosts
   pub fn max_supply(&self) -> Option<u128> {
     let subsidy = self.subsidy.unwrap_or_default();
-    let amount = self
-      .mint_terms
-      .and_then(|terms| terms.amount)
-      .unwrap_or_default();
-    let cap = self
-      .mint_terms
-      .and_then(|terms| terms.cap)
-      .unwrap_or_default();
-    let seed = self
-      .mint_terms
-      .and_then(|terms| terms.seed)
-      .unwrap_or_default();
+    let amount = self.mint_terms.and_then(|terms| terms.amount).unwrap_or_default();
+    let cap = self.mint_terms.and_then(|terms| terms.cap).unwrap_or_default();
+    let seed = self.mint_terms.and_then(|terms| terms.seed).unwrap_or_default();
+
+    // If ultra_rare_multiplier_cap is not set, use rare_multiplier_cap; if that's also not set, use 1.
+    let max_boost = self
+      .boost_terms
+      .map(|b| b.ultra_rare_multiplier_cap.unwrap_or(b.rare_multiplier_cap.unwrap_or(1)))
+      .unwrap_or(1);
+
     subsidy
       .checked_add(seed)?
-      .checked_add(cap.checked_mul(amount)?)
+      .checked_add(cap.checked_mul(amount)?.checked_mul(max_boost.into())?)
   }
 }
