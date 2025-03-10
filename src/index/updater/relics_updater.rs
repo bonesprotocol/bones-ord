@@ -1442,6 +1442,27 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
       }
     }
 
+    if let Some(MintTerms { manifest: Some(manifest_id), .. }) = relic_entry.mint_terms {
+      let minter_addr = self.get_current_minter(txid)?.ok_or(RelicError::MinterNotFound)?;
+      let manifested_minter = ManifestedMinter {
+        minter: Minter(minter_addr.script_pubkey().script_hash()),
+        manifest: manifest_id,
+      };
+      let Some(mints_left) = self
+        .manifested_minter_to_mints_left
+        .get(manifested_minter.store())?
+        .map(|v| v.value())
+      else {
+        return Ok(Err(RelicError::NotOnManifest));
+      };
+      if mints_left == 0 {
+        return Ok(Err(RelicError::NoMintsLeft));
+      }
+      self
+        .manifested_minter_to_mints_left
+        .insert(manifested_minter.store(), mints_left - 1)?;
+    }
+
     relic_entry.state.mints += 1;
 
     // mint cap reached, create liquidity pool
@@ -1705,5 +1726,46 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
 
       None => Ok(None),
     }
+  }
+
+  fn get_current_minter(&self, txid: Txid) -> Result<Option<Address>, RelicError> {
+    let tx_opt = self
+      .index
+      .get_transaction(txid)
+      .unwrap_or_else(|_| panic!("Failed to retrieve transaction {txid}"));
+
+    let tx = match tx_opt {
+      Some(tx) => tx,
+      None => panic!("Transaction not found: {txid}"),
+    };
+
+    for input in &tx.input {
+      if input.previous_output.is_null() {
+        continue;
+      }
+
+      let prev_txid = input.previous_output.txid;
+      let vout = input.previous_output.vout as usize;
+
+      let prev_tx_opt = self
+        .index
+        .get_transaction(prev_txid)
+        .unwrap_or_else(|_| panic!("Failed to retrieve transaction {prev_txid}"));
+
+      let prev_tx = match prev_tx_opt {
+        Some(tx) => tx,
+        None => panic!("Transaction not found: {prev_txid}"),
+      };
+
+      if vout < prev_tx.output.len() {
+        let script_pubkey = &prev_tx.output[vout].script_pubkey;
+        match Address::from_script(script_pubkey, Network::Bitcoin) {
+          Ok(addr) => return Ok(Some(addr)),
+          Err(_) => continue,
+        }
+      }
+    }
+
+    Ok(None)
   }
 }

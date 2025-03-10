@@ -41,6 +41,9 @@ pub enum RelicError {
   ChestLocked(u64),
   NoClaimableBalance,
   ManifestValidation,
+  MinterNotFound,
+  NotOnManifest,
+  NoMintsLeft,
 }
 
 impl Display for RelicError {
@@ -116,6 +119,9 @@ impl Display for RelicError {
         write!(f, "unable to claim: No claimable balance for given output")
       }
       RelicError::ManifestValidation => write!(f, "manifest validation failed"),
+      RelicError::MinterNotFound => write!(f, "minter not found"),
+      RelicError::NotOnManifest => write!(f, "not on manifest"),
+      RelicError::NoMintsLeft => write!(f, "no manifested mints left"),
     }
   }
 }
