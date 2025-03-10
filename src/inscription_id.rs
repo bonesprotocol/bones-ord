@@ -1,4 +1,5 @@
 use super::*;
+use std::io::Read;
 
 #[derive(Debug, PartialEq, Copy, Clone, Hash, Eq, PartialOrd, Ord)]
 pub struct InscriptionId {
@@ -91,6 +92,23 @@ impl FromStr for InscriptionId {
       txid: txid.parse().map_err(ParseError::Txid)?,
       index: vout.parse().map_err(ParseError::Index)?,
     })
+  }
+}
+
+impl InscriptionId {
+  pub(crate) fn value(self) -> [u8; 32] {
+    let index = self.index.to_le_bytes();
+    let mut index_slice = index.as_slice();
+
+    while index_slice.last().copied() == Some(0) {
+      index_slice = &index_slice[0..index_slice.len() - 1];
+    }
+
+    let bytes_vec = self.txid.to_vec();
+
+    let mut array = [0; 32];
+    array.copy_from_slice(&bytes_vec);
+    array
   }
 }
 

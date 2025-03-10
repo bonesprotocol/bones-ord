@@ -7,8 +7,9 @@ use {
   std::collections::HashMap,
 };
 
+use crate::relics::BONESTONES_INSCRIPTION_ID;
 #[cfg(test)]
-use mockcore;
+use mockcore::TransactionTemplate;
 
 pub(crate) struct ContextBuilder {
   args: Vec<OsString>,
@@ -157,46 +158,83 @@ impl Context {
     }
   }
 
-  #[cfg(test)]
-  pub(crate) fn mint_base_token(&self, n: u32, outputs: usize) -> (Vec<Txid>, RelicEntry) {
-    let mut txids = Vec::new();
-    let mut utxo = vec![];
-    for _ in 1..n {
-      let txid = self.relic_tx(
-        &utxo,
-        1,
-        Keepsake {
-          mint: Some(RELIC_ID),
-          ..default()
-        },
-      );
-      txids.push(txid);
-      // passthrough previously minted tokens so that they end up on the same output(s)
-      utxo = vec![OutPoint { txid, vout: 0 }];
-    }
-    let txid = self.relic_tx(
-      &utxo,
-      outputs,
-      Keepsake {
-        mint: Some(RELIC_ID),
-        transfers: vec![Transfer {
-          id: RELIC_ID,
-          amount: 0,
-          // split minted amount among all outputs
-          output: 1 + u32::try_from(outputs).unwrap(),
-        }],
-        ..default()
-      },
-    );
-    txids.push(txid);
+  pub(crate) fn mint_base_token(&self, n: u32, outputs: usize) -> (Txid, RelicEntry) {
+    assert!(n > 0, "must mint at least once");
+    assert!(outputs > 0, "must have at least one output");
 
-    // mine all TX in one block
+    let block_reward = Amount::from_btc(50f64).unwrap();
+    let dust_value = Amount::from_sat(10000);
+
+    let block_count = usize::try_from(self.index.block_count().unwrap()).unwrap();
+    self.mine_blocks(1);
+
+    // create new UTXO per requested mint
+    let mut output_values = vec![(block_reward - dust_value * u64::from(n - 1)).to_sat()];
+    for _ in 1..n {
+      output_values.push(dust_value.to_sat());
+    }
+    self.core.broadcast_tx(TransactionTemplate {
+      inputs: &[(block_count, 0, 0, Default::default())],
+      outputs: n as usize,
+      output_values: &output_values,
+      ..default()
+    });
+
+    self.mine_blocks(1);
+
+    let bones_inscription_value = InscriptionId::from_str(BONESTONES_INSCRIPTION_ID)
+      .unwrap()
+      .value();
+
+    let bones_script = Script::from(Vec::from(
+      [
+        &[3][..],
+        b"ord",
+        &[81][..],
+        &[0][..],
+        &[0][..],
+        &[0][..],
+        &[91][..],
+        &[32][..],
+        &bones_inscription_value,
+      ]
+      .concat(),
+    ));
+
+    let message = Keepsake {
+      transfers: vec![Transfer {
+        id: RELIC_ID,
+        amount: 0,
+        // split minted amount among all outputs
+        output: 1 + u32::try_from(outputs).unwrap(),
+      }],
+      ..default()
+    };
+
+    // reveal and immediately burn a bonestone inscription per requested mint
+    let inputs: Vec<(usize, usize, usize, Script)> = (0..n)
+      .map(|i| (block_count + 1, 1, i as usize, bones_script.clone()))
+      .collect();
+    let txid = self.core.broadcast_tx(TransactionTemplate {
+      inputs: &inputs,
+      outputs,
+      // assign dust value to all outputs
+      output_values: vec![dust_value.to_sat(); outputs].as_slice(),
+      // put a value of 1 sat at index 0 to burn all the inscriptions
+      op_return_index: Some(0),
+      op_return_value: Some(1),
+      op_return: Some(message.encipher()),
+      // assign all unused sats as fee
+      fee: (block_reward - dust_value * outputs as u64 - Amount::ONE_SAT).to_sat(),
+      ..default()
+    });
+
     self.mine_blocks(1);
 
     let mut entry = Self::base_token_entry();
     entry.state.mints += u128::from(n);
 
-    (txids, entry)
+    (txid, entry)
   }
 
   #[cfg(test)]
@@ -290,6 +328,8 @@ impl Context {
 
     let mut metadata = Vec::new();
     ciborium::into_writer(&relic.to_metadata(), &mut metadata).expect("Serialization failed");
+
+    // TODO: parse metadata inscription to correct script instead of using witness for doge
     let relic_inscription = Inscription {
       metadata: Some(metadata),
       ..default()
@@ -298,7 +338,7 @@ impl Context {
     let txid = self.core.broadcast_tx(mockcore::TransactionTemplate {
       inputs: &[
         // reveal Inscription with SpacedRelic
-        (block_count + 2, 0, 0, relic_inscription.to_witness()),
+        (block_count + 2, 0, 0, relic_inscription.to_script()),
       ],
       input_outpoints: &self.relic_outpoints(vec![(RELIC_ID, relic.relic.sealing_fee())]),
       op_return: Some(keepsake.encipher()),
@@ -324,6 +364,7 @@ impl Context {
 
     self.mine_blocks(1);
 
+    // TODO: parse to correct script instead of using witness for doge
     // each syndicate needs an inscription
     let inscription = inscription("text/plain;charset=utf-8", "hello syndicates");
 
@@ -338,7 +379,7 @@ impl Context {
     let txid = self.core.broadcast_tx(mockcore::TransactionTemplate {
       inputs: &[
         // reveal Syndicate inscription
-        (block_count, 0, 0, inscription.to_witness()),
+        (block_count, 0, 0, inscription.to_script()),
       ],
       op_return: Some(keepsake.encipher()),
       outputs: 2,

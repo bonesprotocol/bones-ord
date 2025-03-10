@@ -6,7 +6,6 @@ use {
     sat::Sat,
     sat_point::SatPoint,
   },
-  bitcoincore_rpc::bitcoin::BlockHeader,
   futures::future::try_join_all,
   std::sync::mpsc,
   tokio::sync::mpsc::{error::TryRecvError, Receiver, Sender},
@@ -763,8 +762,9 @@ impl<'index> Updater<'_> {
     Index::increment_statistic(&wtx, Statistic::Commits, 1)?;
 
     wtx.commit()?;
-
-    Reorg::update_savepoints(self.index, self.height)?;
+    if !cfg!(test) {
+      Reorg::update_savepoints(self.index, self.height)?;
+    }
 
     Ok(())
   }

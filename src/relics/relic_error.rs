@@ -234,20 +234,14 @@ mod tests {
   fn base_token_is_mintable() {
     let context = Context::builder().arg("--index-relics").build();
 
-    let (txids, entry) = context.mint_base_token(1, 1);
+    let (txid, entry) = context.mint_base_token(1, 1);
 
     context.assert_relics(
       [(RELIC_ID, entry)],
-      [(
-        OutPoint {
-          txid: txids[0],
-          vout: 0,
-        },
-        vec![(RELIC_ID, 100_000_000)],
-      )],
+      [(OutPoint { txid, vout: 1 }, vec![(RELIC_ID, 572_000_000)])],
     );
 
-    assert_eq!(entry.circulating_supply(), 100_000_000);
+    assert_eq!(entry.circulating_supply(), 572_000_000);
   }
 
   #[test]
@@ -564,7 +558,7 @@ mod tests {
         Event {
           block_height: 1,
           event_index: 0,
-          txid: txid_base[0],
+          txid: txid_base,
           info: EventInfo::RelicMinted {
             relic_id: RELIC_ID,
             amount: 100000000,
@@ -575,7 +569,7 @@ mod tests {
         Event {
           block_height: 1,
           event_index: 1,
-          txid: txid_base[0],
+          txid: txid_base,
           info: EventInfo::RelicTransferred {
             relic_id: RELIC_ID,
             amount: 100000000,
@@ -585,7 +579,7 @@ mod tests {
         Event {
           block_height: 1,
           event_index: 2,
-          txid: txid_base[1],
+          txid: txid_base,
           info: EventInfo::RelicMinted {
             relic_id: RELIC_ID,
             amount: 100000000,
@@ -596,7 +590,7 @@ mod tests {
         Event {
           block_height: 1,
           event_index: 3,
-          txid: txid_base[1],
+          txid: txid_base,
           info: EventInfo::RelicTransferred {
             relic_id: RELIC_ID,
             amount: 200000000,
@@ -606,7 +600,7 @@ mod tests {
         Event {
           block_height: 1,
           event_index: 4,
-          txid: txid_base[2],
+          txid: txid_base,
           info: EventInfo::RelicMinted {
             relic_id: RELIC_ID,
             amount: 100000000,
@@ -617,7 +611,7 @@ mod tests {
         Event {
           block_height: 1,
           event_index: 5,
-          txid: txid_base[2],
+          txid: txid_base,
           info: EventInfo::RelicTransferred {
             relic_id: RELIC_ID,
             amount: 300000000,

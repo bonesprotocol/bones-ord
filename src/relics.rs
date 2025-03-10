@@ -24,7 +24,10 @@ pub const RELIC_NAME: &str = "BONE";
 pub const BONESTONES_INSCRIPTION_ID: &str =
   "babc46e7095a90c814d4c161b1d9d47f921c566ea93ad483d78741cc27c07debi0";
 pub const BONESTONES_END_BLOCK: u32 = 5444000;
+#[cfg(not(test))]
 pub const BONESTONES_START_BLOCK: u32 = 5431819;
+#[cfg(test)]
+pub const BONESTONES_START_BLOCK: u32 = 0;
 pub const MAX_MANIFEST_TREE_DEPTH: u8 = 21;
 
 #[cfg(test)]

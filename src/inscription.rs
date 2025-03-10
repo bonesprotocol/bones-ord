@@ -199,17 +199,10 @@ impl Inscription {
   }
 
   #[cfg(test)]
-  pub(crate) fn to_witness(&self) -> Witness {
+  pub(crate) fn to_script(&self) -> Script {
     let builder = script::Builder::new();
 
-    let script = self.append_reveal_script(builder);
-
-    let mut witness = Witness::new();
-
-    witness.push(script);
-    witness.push([]);
-
-    witness
+    self.append_reveal_script(builder)
   }
 }
 
