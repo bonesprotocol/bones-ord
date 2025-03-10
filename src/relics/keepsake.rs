@@ -1455,18 +1455,27 @@ mod tests {
         }],
         sealing: true,
         enshrining: Some(Enshrining {
+          boost_terms: None,
+          fee: None,
           symbol: Some('a'),
           subsidy: Some(400),
           mint_terms: Some(MintTerms {
             amount: Some(100),
+            block_cap: None,
             cap: Some(100_000),
+            manifest: None,
+            max_unmints: None,
             price: Some(PriceModel::Fixed(321)),
             seed: Some(300),
             swap_height: Some(400_000),
+            tx_cap: None,
           }),
           turbo: true,
         }),
+        manifest: None,
         mint: Some(relic_id(5)),
+        multi_mint: None,
+        unmint: None,
         swap: Some(Swap {
           input: Some(relic_id(42)),
           output: Some(relic_id(43)),
@@ -1819,14 +1828,20 @@ mod tests {
     case(
       Vec::new(),
       Some(Enshrining {
+        boost_terms: None,
+        fee: None,
         symbol: Some('\u{10FFFF}'),
         subsidy: Some(300),
         mint_terms: Some(MintTerms {
           amount: Some(100),
+          block_cap: None,
           cap: Some(100_000),
+          manifest: None,
+          max_unmints: None,
           price: Some(PriceModel::Fixed(321)),
           seed: Some(200),
           swap_height: Some(400_000),
+          tx_cap: None,
         }),
         turbo: true,
       }),
@@ -2144,18 +2159,27 @@ mod tests {
         ],
         sealing: true,
         enshrining: Some(Enshrining {
+          boost_terms: None,
+          fee: None,
           symbol: Some('@'),
           subsidy: Some(300),
           mint_terms: Some(MintTerms {
             amount: Some(100),
+            block_cap: None,
             cap: Some(100_000),
+            manifest: None,
+            max_unmints: None,
             price: Some(PriceModel::Fixed(321)),
             seed: Some(200),
             swap_height: Some(400_000),
+            tx_cap: None,
           }),
           turbo: true,
         }),
+        manifest: None,
         mint: Some(relic_id(5)),
+        multi_mint: None,
+        unmint: None,
         swap: Some(Swap {
           input: Some(relic_id(42)),
           output: Some(relic_id(43)),
@@ -2239,7 +2263,10 @@ mod tests {
         ],
         sealing: false,
         enshrining: None,
+        manifest: None,
         mint: None,
+        multi_mint: None,
+        unmint: None,
         swap: None,
         summoning: Some(Summoning {
           treasure: Some(relic_id(20)),
@@ -2306,6 +2333,8 @@ mod tests {
     case(
       Keepsake {
         enshrining: Some(Enshrining {
+          boost_terms: None,
+          fee: None,
           symbol: None,
           subsidy: Some(3),
           mint_terms: None,
@@ -2324,6 +2353,8 @@ mod tests {
     case(
       Keepsake {
         enshrining: Some(Enshrining {
+          boost_terms: None,
+          fee: None,
           symbol: None,
           subsidy: None,
           mint_terms: None,

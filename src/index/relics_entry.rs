@@ -589,6 +589,7 @@ mod tests {
     let entry = RelicEntry {
       block: 12,
       enshrining: txid,
+      fee: 0,
       number: 6,
       spaced_relic: SpacedRelic {
         relic: Relic(7),
@@ -596,12 +597,14 @@ mod tests {
       },
       symbol: Some('a'),
       owner_sequence_number: Some(123),
+      boost_terms: None,
       mint_terms: Some(MintTerms {
         amount: Some(4),
         block_cap: None,
         cap: Some(1),
+        manifest: None,
         max_unmints: None,
-        price: Some(8),
+        price: Some(PriceModel::Fixed(8)),
         seed: Some(22),
         swap_height: Some(400_000),
         tx_cap: None,
@@ -628,15 +631,16 @@ mod tests {
         0x0F0E0D0C0B0A09080706050403020100,
         0x1F1E1D1C1B1A19181716151413121110,
       ),
+      0,
       6,
       (7, 8),
       Some('a'),
       Some(123),
-      Some((Some(4), Some(1), Some(8), Some(22), Some(400_000))),
+      None,
+      Some((Some(4), None, Some(1), None, None, Some(1), Some(8), None, None, Some(22), Some(400_000), None)),
       (33, 44, 17, 55, 66, true),
       Some((321, 123, 13)),
       10,
-      true,
     );
 
     assert_eq!(entry.store(), value);

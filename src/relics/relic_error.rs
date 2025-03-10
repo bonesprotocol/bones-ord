@@ -179,10 +179,14 @@ mod tests {
       Enshrining {
         mint_terms: Some(MintTerms {
           amount: Some(1000),
+          block_cap: None,
           cap: Some(1),
-          price: Some(1),
+          manifest: None,
+          max_unmints: None,
+          price: Some(PriceModel::Fixed(1)),
           seed: Some(1000),
           swap_height: None,
+          tx_cap: None,
         }),
         ..default()
       },
@@ -208,10 +212,14 @@ mod tests {
             owner_sequence_number: Some(0),
             mint_terms: Some(MintTerms {
               amount: Some(1000),
+              block_cap: None,
               cap: Some(1),
-              price: Some(1),
+              manifest: None,
+              max_unmints: None,
+              price: Some(PriceModel::Fixed(1)),
               seed: Some(1000),
               swap_height: None,
+              tx_cap: None,
             }),
             ..default()
           },
@@ -253,10 +261,14 @@ mod tests {
       Enshrining {
         mint_terms: Some(MintTerms {
           amount: Some(1000),
+          block_cap: None,
           cap: Some(1),
-          price: Some(5000),
+          manifest: None,
+          max_unmints: None,
+          price: Some(PriceModel::Fixed(5000)),
           seed: Some(1000),
           swap_height: None,
+          tx_cap: None,
         }),
         ..default()
       },
@@ -279,6 +291,7 @@ mod tests {
     let mut entry_quote = RelicEntry {
       block: id.block,
       enshrining: txid_enshrine,
+      fee: 0,
       number: 1,
       spaced_relic: SpacedRelic {
         relic: Relic(RELIC),
@@ -286,12 +299,17 @@ mod tests {
       },
       symbol: None,
       owner_sequence_number: Some(0),
+      boost_terms: None,
       mint_terms: Some(MintTerms {
         amount: Some(1000),
+        block_cap: None,
         cap: Some(1),
-        price: Some(5000),
+        manifest: None,
+        max_unmints: None,
+        price: Some(PriceModel::Fixed(5000)),
         seed: Some(1000),
         swap_height: None,
+        tx_cap: None,
       }),
       state: RelicState {
         mints: 1,
@@ -303,7 +321,6 @@ mod tests {
         fee_percentage: 1,
       }),
       timestamp: id.block,
-      turbo: false,
     };
 
     context.assert_relics(
@@ -363,10 +380,14 @@ mod tests {
       Enshrining {
         mint_terms: Some(MintTerms {
           amount: Some(1000),
+          block_cap: None,
           cap: Some(1),
-          price: Some(1),
+          manifest: None,
+          max_unmints: None,
+          price: Some(PriceModel::Fixed(1)),
           seed: Some(1000),
           swap_height: None,
+          tx_cap: None,
         }),
         ..default()
       },
@@ -387,10 +408,14 @@ mod tests {
       owner_sequence_number: Some(0),
       mint_terms: Some(MintTerms {
         amount: Some(1000),
+        block_cap: None,
         cap: Some(1),
-        price: Some(1),
+        manifest: None,
+        max_unmints: None,
+        price: Some(PriceModel::Fixed(1)),
         seed: Some(1000),
         swap_height: None,
+        tx_cap: None,
       }),
       ..default()
     };
@@ -428,10 +453,14 @@ mod tests {
       Enshrining {
         mint_terms: Some(MintTerms {
           cap: Some(1),
+          manifest: None,
           amount: Some(1000),
-          price: Some(5000),
+          price: Some(PriceModel::Fixed(5000)),
           seed: Some(1000),
           swap_height: None,
+          block_cap: None,
+          max_unmints: None,
+          tx_cap: None,
         }),
         ..default()
       },
@@ -442,10 +471,14 @@ mod tests {
       Enshrining {
         mint_terms: Some(MintTerms {
           cap: Some(1),
+          manifest: None,
           amount: Some(1000),
-          price: Some(5000),
+          price: Some(PriceModel::Fixed(5000)),
           seed: Some(1000),
           swap_height: None,
+          block_cap: None,
+          max_unmints: None,
+          tx_cap: None,
         }),
         ..default()
       },
@@ -535,6 +568,8 @@ mod tests {
           info: EventInfo::RelicMinted {
             relic_id: RELIC_ID,
             amount: 100000000,
+            multiplier: 0,
+            is_unmint: false,
           },
         },
         Event {
@@ -554,6 +589,8 @@ mod tests {
           info: EventInfo::RelicMinted {
             relic_id: RELIC_ID,
             amount: 100000000,
+            multiplier: 0,
+            is_unmint: false,
           },
         },
         Event {
@@ -573,6 +610,8 @@ mod tests {
           info: EventInfo::RelicMinted {
             relic_id: RELIC_ID,
             amount: 100000000,
+            multiplier: 0,
+            is_unmint: false,
           },
         },
         Event {
@@ -704,6 +743,8 @@ mod tests {
           info: EventInfo::RelicMinted {
             relic_id: id1,
             amount: 1000,
+            multiplier: 0,
+            is_unmint: false,
           },
         },
         Event {
@@ -733,6 +774,8 @@ mod tests {
           info: EventInfo::RelicMinted {
             relic_id: id2,
             amount: 1000,
+            multiplier: 0,
+            is_unmint: false,
           },
         },
         Event {
