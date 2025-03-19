@@ -61,7 +61,7 @@ impl Display for PoolError {
 pub struct Pool {
   pub base_supply: u128,
   pub quote_supply: u128,
-  pub fee_percentage: u8,
+  pub fee_bps: u16,
 }
 
 impl Pool {
@@ -88,12 +88,18 @@ impl Pool {
   }
 
   fn calc_fee(&self, base_amount: u128) -> Result<u128, PoolError> {
-    Ok(
-      base_amount
-        .checked_mul(self.fee_percentage as u128)
-        .ok_or(PoolError::Overflow)?
-        .div_ceil(100),
-    )
+    // Split base_amount to avoid overflow
+    let quotient = base_amount / 10_000;
+    let remainder = base_amount % 10_000;
+
+    // Compute the main part of the fee
+    let fee_quotient = quotient.checked_mul(self.fee_bps as u128).ok_or(PoolError::Overflow)?;
+
+    // Compute the fractional part for keeping precision
+    let fee_remainder = remainder.checked_mul(self.fee_bps as u128).ok_or(PoolError::Overflow)?.div_ceil(10_000);
+
+    // Combine both parts safely
+    fee_quotient.checked_add(fee_remainder).ok_or(PoolError::Overflow)
   }
 
   pub fn calculate(&self, swap: PoolSwap) -> Result<BalanceDiff, PoolError> {
@@ -195,17 +201,17 @@ impl Pool {
 mod tests {
   use super::*;
 
-  fn new(base_supply: u128, quote_supply: u128, fee_percentage: u8) -> Pool {
+  fn new(base_supply: u128, quote_supply: u128, fee_bps: u16) -> Pool {
     Pool {
       base_supply,
       quote_supply,
-      fee_percentage,
+      fee_bps,
     }
   }
 
   #[test]
   fn low_liquidity() {
-    let mut pool = new(100, 100, 1);
+    let mut pool = new(100, 100, 100);
     let mut step = || {
       let result = pool.execute_log(PoolSwap::Input {
         direction: BaseToQuote,
@@ -262,12 +268,12 @@ mod tests {
         fee: 1,
       })
     );
-    assert_eq!(pool, new(145, 70, 1));
+    assert_eq!(pool, new(145, 70, 100));
   }
 
   #[test]
   fn high_liquidity() {
-    let mut pool = new(100_000, 100_000, 1);
+    let mut pool = new(100_000, 100_000, 100);
     for _ in 0..10 {
       let diff = pool.execute_log(PoolSwap::Input {
         direction: BaseToQuote,
@@ -285,12 +291,12 @@ mod tests {
       );
       pool.apply(diff.unwrap());
     }
-    assert_eq!(pool, new(100_090, 99_920, 1));
+    assert_eq!(pool, new(100_090, 99_920, 100));
   }
 
   #[test]
   fn exact_input_base() {
-    let pool = new(100_000, 100_000, 1);
+    let pool = new(100_000, 100_000, 100);
     assert_eq!(
       pool.execute_log(PoolSwap::Input {
         direction: BaseToQuote,
@@ -308,7 +314,7 @@ mod tests {
 
   #[test]
   fn exact_input_quote() {
-    let pool = new(100_000, 100_000, 1);
+    let pool = new(100_000, 100_000, 100);
     assert_eq!(
       pool.execute_log(PoolSwap::Input {
         direction: QuoteToBase,
@@ -326,7 +332,7 @@ mod tests {
 
   #[test]
   fn exact_output_base() {
-    let pool = new(100_000, 100_000, 1);
+    let pool = new(100_000, 100_000, 100);
     assert_eq!(
       pool.execute_log(PoolSwap::Output {
         direction: QuoteToBase,
@@ -344,7 +350,7 @@ mod tests {
 
   #[test]
   fn exact_output_quote() {
-    let pool = new(100_000, 100_000, 1);
+    let pool = new(100_000, 100_000, 100);
     assert_eq!(
       pool.execute_log(PoolSwap::Output {
         direction: BaseToQuote,
@@ -362,7 +368,7 @@ mod tests {
 
   #[test]
   fn back_and_forth() {
-    let mut pool = new(100_000, 100_000, 1);
+    let mut pool = new(100_000, 100_000, 100);
     for _ in 0..10 {
       let buy = pool.execute_log(PoolSwap::Input {
         direction: BaseToQuote,
@@ -396,13 +402,13 @@ mod tests {
       pool.apply(sell.unwrap());
     }
     // rounding errors accumulate
-    assert_eq!(pool, new(100_010, 100_000, 1));
+    assert_eq!(pool, new(100_010, 100_000, 100));
   }
 
   #[test]
   fn impossible_to_fully_drain() {
     let supply = 100_000;
-    let pool = new(supply, supply, 1);
+    let pool = new(supply, supply, 100);
     let large_but_not_overflowing = u128::MAX / supply;
     assert!(
       pool
@@ -426,7 +432,7 @@ mod tests {
         .output
         < supply
     );
-    let pool = new(supply, 1, 1);
+    let pool = new(supply, 1, 100);
     assert_eq!(
       pool
         .execute_log(PoolSwap::Input {
@@ -442,7 +448,7 @@ mod tests {
 
   #[test]
   fn asking_for_too_much() {
-    let pool = new(424_242, 123_456, 1);
+    let pool = new(424_242, 123_456, 100);
     assert_eq!(
       pool.execute_log(PoolSwap::Output {
         direction: QuoteToBase,
@@ -577,12 +583,12 @@ mod tests {
   fn fee_percentages() {
     let cases = vec![
       (0, 0),
-      (1, 37),
-      (2, 73),
-      (3, 110),
-      (4, 146),
-      (5, 183),
-      (50, 1821),
+      (100, 37),
+      (200, 73),
+      (300, 110),
+      (400, 146),
+      (500, 183),
+      (5_000, 1821),
     ];
     for (fee_percentage, fee) in cases {
       let pool = new(444_555, 123_123, fee_percentage);
@@ -626,7 +632,7 @@ mod tests {
 
   #[test]
   fn slippage_too_low_output_swap_with_fee() {
-    let pool = new(100_000, 100_000, 1);
+    let pool = new(100_000, 100_000, 100);
     // base to quote
     assert_eq!(
       pool.execute_log(PoolSwap::Output {
@@ -676,7 +682,7 @@ mod tests {
 
   #[test]
   fn slippage_too_low_input_swap_with_fee() {
-    let pool = new(100_000, 100_000, 1);
+    let pool = new(100_000, 100_000, 100);
     // base to quote
     assert_eq!(
       pool.execute_log(PoolSwap::Input {
@@ -703,7 +709,7 @@ mod tests {
   fn instantaneous_price() {
     #[track_caller]
     fn case(base: u128, quote: u128, expected: u128) {
-      let pool = new(base, quote, 1);
+      let pool = new(base, quote, 100);
       assert_eq!(pool.lossy_price(), expected);
     }
 

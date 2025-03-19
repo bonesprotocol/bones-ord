@@ -1442,6 +1442,7 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
       }
     }
 
+    //todo: manifest check for multi mint
     if let Some(MintTerms { manifest: Some(manifest_id), .. }) = relic_entry.mint_terms {
       let minter_addr = self.get_current_minter(txid)?.ok_or(RelicError::MinterNotFound)?;
       let manifested_minter = ManifestedMinter {
@@ -1479,7 +1480,7 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
         relic_entry.pool = Some(Pool {
           base_supply,
           quote_supply,
-          fee_percentage: 1,
+          fee_bps: relic_entry.fee.max(1_000),
         })
       }
     }
@@ -1541,13 +1542,39 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
       boosted_results = mint_results;
     }
 
-    relic_entry.state.mints += boosted_results.len() as u128;
+    let mut valid_mints: usize = 0;
+    for _ in 0..boosted_results.len() {
+      if let Some(MintTerms { manifest: Some(manifest_id), .. }) = relic_entry.mint_terms {
+        let minter_addr = self.get_current_minter(txid)?.ok_or(RelicError::MinterNotFound)?;
+        let manifested_minter = ManifestedMinter {
+          minter: Minter(minter_addr.script_pubkey().script_hash()),
+          manifest: manifest_id,
+        };
+        let Some(mints_left) = self
+            .manifested_minter_to_mints_left
+            .get(manifested_minter.store())?
+            .map(|v| v.value())
+        else {
+          return Ok(Err(RelicError::NotOnManifest));
+        };
+        // todo: is it correct to break here, so all mints that are possible will be done and rest will be skipped?
+        if mints_left == 0 {
+          break;
+        }
+        self
+            .manifested_minter_to_mints_left
+            .insert(manifested_minter.store(), mints_left - 1)?;
+        valid_mints += 1;
+      }
+    }
+
+    relic_entry.state.mints += valid_mints as u128;
 
     // Update per-block mint counter.
     if let Some(terms) = relic_entry.mint_terms {
       if terms.block_cap.is_some() {
         let counter = self.mints_in_block.entry(id).or_insert(0);
-        *counter = counter.saturating_add(boosted_results.len() as u32);
+        *counter = counter.saturating_add(valid_mints as u32);
       }
     }
 
@@ -1565,7 +1592,8 @@ impl<'a, 'tx, 'index, 'emitter> RelicUpdater<'a, 'tx, 'index, 'emitter> {
           relic_entry.pool = Some(Pool {
             base_supply,
             quote_supply,
-            fee_percentage: 1,
+            // cap at 10% fee
+            fee_bps: relic_entry.fee.max(1_000),
           });
         }
       }

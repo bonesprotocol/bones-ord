@@ -312,7 +312,7 @@ mod tests {
       pool: Some(Pool {
         base_supply: 5000,
         quote_supply: 1000,
-        fee_percentage: 1,
+        fee_bps: 100,
       }),
       timestamp: id.block,
     };

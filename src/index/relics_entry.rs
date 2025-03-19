@@ -442,21 +442,21 @@ impl Entry for BoostTerms {
   }
 }
 
-pub type PoolValue = (u128, u128, u8);
+pub type PoolValue = (u128, u128, u16);
 
 impl Entry for Pool {
   type Value = PoolValue;
 
-  fn load((base_supply, quote_supply, fee_percentage): Self::Value) -> Self {
+  fn load((base_supply, quote_supply, fee_bps): Self::Value) -> Self {
     Self {
       base_supply,
       quote_supply,
-      fee_percentage,
+      fee_bps,
     }
   }
 
   fn store(self) -> Self::Value {
-    (self.base_supply, self.quote_supply, self.fee_percentage)
+    (self.base_supply, self.quote_supply, self.fee_bps)
   }
 }
 
@@ -620,7 +620,7 @@ mod tests {
       pool: Some(Pool {
         base_supply: 321,
         quote_supply: 123,
-        fee_percentage: 13,
+        fee_bps: 13,
       }),
       timestamp: 10,
     };

@@ -158,6 +158,7 @@ impl Context {
     }
   }
 
+  #[cfg(test)]
   pub(crate) fn mint_base_token(&self, n: u32, outputs: usize) -> (Txid, RelicEntry) {
     assert!(n > 0, "must mint at least once");
     assert!(outputs > 0, "must have at least one output");

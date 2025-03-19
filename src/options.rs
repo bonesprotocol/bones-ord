@@ -52,6 +52,12 @@ pub(crate) struct Options {
   pub(crate) index: Option<PathBuf>,
   #[arg(long, help = "Track location of relics.")]
   pub(crate) index_relics: bool,
+  #[arg(
+    long,
+    default_value = "false",
+    help = "Index memory pool transactions."
+  )]
+  pub(crate) index_memory_pool: bool,
   #[arg(long, help = "Track location of all satoshis.")]
   pub(crate) index_sats: bool,
   #[arg(long, help = "Store transactions in index.")]
